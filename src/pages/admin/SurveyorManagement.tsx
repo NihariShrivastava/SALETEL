@@ -71,7 +71,7 @@ export default function SurveyorManagement() {
       setDomains(dData || []);
       setUserRoles(urData || []);
       setCounters(cData || []);
-      setTemplates(tData || []);
+      setTemplates((tData as any) || []);
       setSurveyors(sData || []);
     } catch (error) {
       console.error(error);

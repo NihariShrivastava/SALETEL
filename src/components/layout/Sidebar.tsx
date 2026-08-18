@@ -7,7 +7,7 @@ export default function Sidebar() {
   const location = useLocation();
   const currentPath = location.pathname + location.search;
 
-  const navItems = [
+  const navItems: Array<{ to: string, icon: any, label: string, badge?: string | number }> = [
     { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard Overview' },
     { to: '/admin/submissions', icon: History, label: 'Submissions Log' },
     { to: '/admin/domains', icon: Users, label: 'Domain Management' },

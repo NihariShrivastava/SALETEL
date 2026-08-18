@@ -36,6 +36,7 @@ export default function TelecallerDashboard() {
           surveyorIdsToFetch = Array.from(allAssigned);
         }
 
+        const counterIds = (user as any).counter_ids || [];
         const [survRes, counterRes] = await Promise.all([
           surveyorIdsToFetch.length > 0 
             ? supabase.from('surveyors').select('id, full_name, username, phone, location').in('id', surveyorIdsToFetch).eq('user_role_id', (await supabase.from('user_roles').select('id').eq('name', 'Surveyor').single()).data?.id || '')
@@ -135,7 +136,7 @@ export default function TelecallerDashboard() {
               <Building2 className="w-4 h-4 text-accent-purple" />
               Assigned Counters
             </h3>
-            <Badge variant="purple">{assignedCounters.length}</Badge>
+            <Badge variant="blue">{assignedCounters.length}</Badge>
           </div>
           
           <div className="grid gap-4">
