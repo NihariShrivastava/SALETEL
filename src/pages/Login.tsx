@@ -39,7 +39,7 @@ export default function Login() {
       const { data: adminData, error: adminErr } = await supabase
         .from('admin_users')
         .select('*')
-        .eq('username', username)
+        .ilike('username', username)
         .eq('password_hash', hashed)
         .single();
 
@@ -54,7 +54,7 @@ export default function Login() {
       const { data: counterData } = await supabase
         .from('counters')
         .select('*')
-        .eq('username', username)
+        .ilike('username', username)
         .eq('password_hash', password)
         .single();
 
@@ -69,7 +69,7 @@ export default function Login() {
       const { data: surveyorData } = await supabase
         .from('surveyors')
         .select('*, user_role:user_roles(name)')
-        .eq('username', username)
+        .ilike('username', username)
         .eq('password_hash', password)
         .single();
 

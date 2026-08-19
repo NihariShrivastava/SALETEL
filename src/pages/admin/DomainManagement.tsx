@@ -26,6 +26,7 @@ export default function DomainManagement() {
   const [isLoading, setIsLoading] = useState(false);
 
   // Form State
+  const [editingDomainId, setEditingDomainId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedIcon, setSelectedIcon] = useState('Briefcase');
@@ -60,24 +61,44 @@ export default function DomainManagement() {
     if (!name || !user?.id) return;
     setIsLoading(true);
     try {
-      const { error } = await supabase.from('domains').insert({
-        name,
-        description,
-        icon: selectedIcon,
-        color: selectedColor,
-        created_by: user.id
-      });
-      if (error) throw error;
-      toast.success('Domain created successfully');
+      if (editingDomainId) {
+        const { error } = await supabase.from('domains').update({
+          name,
+          description,
+          icon: selectedIcon,
+          color: selectedColor,
+        }).eq('id', editingDomainId);
+        if (error) throw error;
+        toast.success('Domain updated successfully');
+      } else {
+        const { error } = await supabase.from('domains').insert({
+          name,
+          description,
+          icon: selectedIcon,
+          color: selectedColor,
+          created_by: user.id
+        });
+        if (error) throw error;
+        toast.success('Domain created successfully');
+      }
       setName('');
       setDescription('');
+      setEditingDomainId(null);
       fetchData();
     } catch (error) {
       console.error(error);
-      toast.error('Failed to create domain');
+      toast.error(editingDomainId ? 'Failed to update domain' : 'Failed to create domain');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleEditClick = (domain: DomainWithStats) => {
+    setEditingDomainId(domain.id);
+    setName(domain.name);
+    setDescription(domain.description || '');
+    setSelectedIcon(domain.icon || 'Briefcase');
+    setSelectedColor(domain.color || '#4f6ef7');
   };
 
   const handleDeleteDomain = async (id: string) => {
@@ -119,8 +140,8 @@ export default function DomainManagement() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Panel - Create Domain */}
-        <Card title="Create Domain" className="lg:col-span-1 h-fit">
+        {/* Left Panel - Create/Edit Domain */}
+        <Card title={editingDomainId ? "Edit Domain" : "Create Domain"} className="lg:col-span-1 h-fit">
           <form onSubmit={handleCreateDomain} className="space-y-5 mt-2">
             <div className="space-y-1.5">
               <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Domain Name</label>
@@ -169,7 +190,18 @@ export default function DomainManagement() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" isLoading={isLoading}>Create Domain</Button>
+            <div className="flex gap-2">
+              {editingDomainId && (
+                <Button type="button" variant="outline" className="flex-1" onClick={() => {
+                  setEditingDomainId(null);
+                  setName('');
+                  setDescription('');
+                }}>Cancel</Button>
+              )}
+              <Button type="submit" className="flex-1" isLoading={isLoading}>
+                {editingDomainId ? 'Update Domain' : 'Create Domain'}
+              </Button>
+            </div>
           </form>
         </Card>
 
@@ -184,7 +216,10 @@ export default function DomainManagement() {
 
               return (
                 <Card key={domain.id} className="flex flex-col relative group">
-                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                    <button onClick={() => handleEditClick(domain)} className="text-text-muted hover:text-accent-blue p-1 bg-bg-primary rounded">
+                      <Icons.Edit2 className="w-4 h-4" />
+                    </button>
                     <button onClick={() => handleDeleteDomain(domain.id)} className="text-text-muted hover:text-accent-red p-1 bg-bg-primary rounded">
                       <Icons.Trash2 className="w-4 h-4" />
                     </button>

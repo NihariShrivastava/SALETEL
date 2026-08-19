@@ -187,7 +187,7 @@ export default function Dashboard() {
       </div>
 
       {/* Recent Submissions */}
-      <Card title="Recent Submissions" className="overflow-hidden p-0">
+      <Card className="overflow-hidden p-0">
         <div className="p-5 border-b border-bg-border flex justify-between items-center">
           <div>
             <h3 className="text-sm font-semibold text-white">Recent Submissions</h3>
@@ -196,7 +196,7 @@ export default function Dashboard() {
           <button className="text-xs text-accent-blue hover:text-accent-purple font-medium">View All &rarr;</button>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-sm">
+          <table className="w-full text-left border-collapse text-sm min-w-[600px]">
             <thead>
               <tr className="bg-bg-primary/50 text-text-muted text-[10px] uppercase tracking-widest border-b border-bg-border">
                 <th className="py-3 px-5 font-semibold">Surveyor</th>

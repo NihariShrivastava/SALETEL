@@ -14,6 +14,7 @@ import MasterReports from './pages/admin/MasterReports';
 
 import SurveyorLayout from './pages/surveyor/SurveyorLayout';
 import SurveyorDashboard from './pages/surveyor/SurveyorDashboard';
+import SurveyorHistory from './pages/surveyor/SurveyorHistory';
 import FillForm from './pages/surveyor/FillForm';
 
 import SharedDashboardLayout from './components/layout/SharedDashboardLayout';
@@ -87,6 +88,7 @@ function App() {
         }>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<SurveyorDashboard />} />
+          <Route path="history" element={<SurveyorHistory />} />
           <Route path="fill" element={<FillForm />} />
         </Route>
 

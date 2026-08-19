@@ -112,7 +112,7 @@ export default function TeamLeadDashboard() {
         </div>
       </div>
       
-      <div className="flex gap-2 border-b border-bg-border pb-px">
+      <div className="flex gap-2 border-b border-bg-border pb-px overflow-x-auto hide-scrollbar">
         <button
           onClick={() => setActiveTab('pending')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'pending' ? 'border-accent-blue text-white' : 'border-transparent text-text-secondary hover:text-white'}`}
@@ -128,7 +128,8 @@ export default function TeamLeadDashboard() {
       </div>
 
       <Card className="p-0 overflow-hidden">
-        <table className="w-full text-left border-collapse text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-sm min-w-[700px]">
           <thead>
             <tr className="bg-bg-primary/50 text-text-muted text-[10px] uppercase tracking-widest border-b border-bg-border">
               <th className="py-3 px-5 font-semibold">Surveyor</th>
@@ -199,6 +200,7 @@ export default function TeamLeadDashboard() {
             )}
           </tbody>
         </table>
+        </div>
       </Card>
 
       {/* Submission Review Modal */}

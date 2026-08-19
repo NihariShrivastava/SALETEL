@@ -231,6 +231,20 @@ export default function MasterReports() {
     XLSX.writeFile(workbook, `SALETEL_Report_${sheetName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const handleDeleteSubmission = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this submission? This action cannot be undone.')) return;
+    try {
+      const { error } = await supabase.from('submissions').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Submission deleted successfully');
+      fetchData(); // Refresh data
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete submission');
+    }
+  };
+
   const tabs = [
     { id: 'domain', label: 'By Domain', icon: Database },
     { id: 'role', label: 'By Role', icon: Users },
@@ -274,7 +288,7 @@ export default function MasterReports() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Submissions</div>
           <div className="text-2xl font-bold text-white tracking-tight">{stats.totalSubmissions.toLocaleString()}</div>
@@ -303,7 +317,7 @@ export default function MasterReports() {
             <h3 className="text-sm font-semibold text-white">Master Data Entries</h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse whitespace-nowrap text-sm">
+            <table className="w-full text-left border-collapse whitespace-nowrap text-sm min-w-[800px]">
               <thead className="bg-bg-secondary border-b border-bg-border">
                 <tr className="text-text-muted text-[10px] uppercase tracking-widest">
                   <th className="py-3 px-4 font-semibold">ID</th>
@@ -344,9 +358,14 @@ export default function MasterReports() {
                       <td className="py-3 px-4 text-text-secondary">{d['Reviewed By']}</td>
                       <td className="py-3 px-4 text-text-secondary max-w-[200px] truncate" title={d.Remarks}>{d.Remarks}</td>
                       <td className="py-3 px-4 text-right">
-                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedSub(d._raw); }}>
-                          View Form
-                        </Button>
+                        <div className="flex justify-end gap-2 items-center">
+                          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedSub(d._raw); }}>
+                            View Form
+                          </Button>
+                          <Button size="sm" className="bg-accent-red hover:bg-accent-red/90 text-white border-transparent shadow-lg shadow-accent-red/20 px-4" onClick={(e) => handleDeleteSubmission(d._raw.id, e)}>
+                            Delete
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -417,8 +436,11 @@ export default function MasterReports() {
           </div>
         </Card>
 
-        <Card title="Data Breakdown" className="lg:col-span-1 flex flex-col p-0 overflow-hidden">
-          <div className="overflow-y-auto max-h-[400px]">
+        <Card className="lg:col-span-1 flex flex-col p-0 overflow-hidden h-[400px]">
+          <div className="p-4 border-b border-bg-border shrink-0">
+            <h3 className="text-sm font-semibold text-white">Data Breakdown</h3>
+          </div>
+          <div className="overflow-y-auto overflow-x-auto flex-1">
             <table className="w-full text-left border-collapse text-sm">
               <thead className="sticky top-0 bg-bg-secondary z-10 border-b border-bg-border">
                 <tr className="text-text-muted text-[10px] uppercase tracking-widest">
@@ -487,7 +509,7 @@ export default function MasterReports() {
 
       {/* Read-Only Slide-out Detail Panel */}
       {selectedSub && (
-        <div className="fixed top-0 right-0 w-96 lg:w-[32rem] h-full bg-bg-secondary border-l border-bg-border shadow-2xl flex flex-col z-50 transition-transform transform translate-x-0">
+        <div className="fixed top-0 right-0 w-full sm:w-96 lg:w-[32rem] h-full bg-bg-secondary border-l border-bg-border shadow-2xl flex flex-col z-50 transition-transform transform translate-x-0">
           <div className="p-4 border-b border-bg-border flex justify-between items-center bg-bg-primary">
             <div>
               <h3 className="text-sm font-semibold text-white uppercase tracking-widest">Submission Details</h3>

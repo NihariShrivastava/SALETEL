@@ -3,7 +3,12 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { LayoutDashboard, CheckSquare, IndianRupee, History, Users, FileText, UserCog, Building2, FileBarChart } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation();
   const currentPath = location.pathname + location.search;
 
@@ -17,8 +22,20 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 bg-bg-secondary border-r border-bg-border flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
-      <div className="p-4">
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm"
+          onClick={onClose}
+        />
+      )}
+      <aside className={cn(
+        "bg-bg-secondary border-r border-bg-border flex flex-col h-[calc(100vh-4rem)] overflow-y-auto transition-transform duration-300 z-50",
+        "fixed md:static w-64 shadow-2xl md:shadow-none",
+        isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
+        <div className="p-4">
         {/* Navigation */}
         <nav className="space-y-1">
           {navItems.map((item) => {
@@ -28,6 +45,7 @@ export default function Sidebar() {
               <NavLink
                 key={item.to}
                 to={item.to}
+                onClick={() => { if (window.innerWidth < 768 && onClose) onClose(); }}
                 className={cn(
                   "flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors group",
                   isActive 
@@ -49,6 +67,13 @@ export default function Sidebar() {
           })}
         </nav>
       </div>
+      
+      {isOpen && (
+        <div className="mt-auto p-4 md:hidden border-t border-bg-border text-center">
+          <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">SALETEL v2.0</p>
+        </div>
+      )}
     </aside>
+    </>
   );
 }

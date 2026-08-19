@@ -10,19 +10,27 @@ import { useAuth } from '../../contexts/AuthContext';
 import SignatureCanvas from 'react-signature-canvas';
 import type { FieldConfig } from '../../types';
 
-export default function FillForm() {
+interface FillFormProps {
+  domainId?: string;
+  templateId?: string;
+  onSuccess?: () => void;
+  onCancel?: () => void;
+  isInline?: boolean;
+}
+
+export default function FillForm({ domainId, templateId, onSuccess, onCancel, isInline }: FillFormProps = {}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   
-  const activeDomainId = searchParams.get('domainId');
-  const activeTemplateIdParam = searchParams.get('templateId');
+  const activeDomainId = domainId || searchParams.get('domainId');
+  const activeTemplateIdParam = templateId || searchParams.get('templateId');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fields, setFields] = useState<FieldConfig[]>([]);
   const [formName, setFormName] = useState('Loading Form...');
   const [formDescription, setFormDescription] = useState('');
-  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [resolvedTemplateId, setResolvedTemplateId] = useState<string | null>(null);
   
   // Dynamic form state
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -98,7 +106,7 @@ export default function FillForm() {
             throw error;
           }
         } else if (data) {
-          setTemplateId(data.id);
+          setResolvedTemplateId(data.id);
           setFormName(data.name);
           setFormDescription(data.description || '');
           setFields(data.fields || []);
@@ -155,12 +163,12 @@ export default function FillForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!templateId || !user) return;
+    if (!resolvedTemplateId || !user) return;
     
     setIsSubmitting(true);
     try {
       const { error } = await supabase.from('submissions').insert({
-        form_template_id: templateId,
+        form_template_id: resolvedTemplateId,
         domain_id: activeDomainId || null,
         surveyor_id: user.id,
         data: formData,
@@ -170,7 +178,11 @@ export default function FillForm() {
       if (error) throw error;
       
       toast.success('Form submitted successfully!');
-      navigate('/surveyor/dashboard');
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        navigate('/surveyor/dashboard');
+      }
     } catch (err) {
       console.error(err);
       toast.error('Failed to submit form');
@@ -383,9 +395,11 @@ export default function FillForm() {
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-20">
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/surveyor/dashboard')} className="p-2 text-text-muted hover:text-white bg-bg-secondary rounded-lg border border-bg-border transition-colors">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+        {!isInline && (
+          <button onClick={() => navigate('/surveyor/dashboard')} className="p-2 text-text-muted hover:text-white bg-bg-secondary rounded-lg border border-bg-border transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        )}
         <div>
           <h2 className="text-2xl font-bold text-white tracking-tight">{formName}</h2>
           {formDescription && <p className="text-text-secondary text-sm mt-0.5">{formDescription}</p>}
@@ -442,7 +456,7 @@ export default function FillForm() {
           </Card>
 
           <div className="flex justify-end gap-4">
-            <Button type="button" variant="ghost" onClick={() => navigate('/surveyor/dashboard')}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => onCancel ? onCancel() : navigate('/surveyor/dashboard')}>Cancel</Button>
             <Button type="submit" size="lg" isLoading={isSubmitting} className="shadow-lg shadow-accent-blue/20">
               <Send className="w-4 h-4 mr-2" /> Submit Field Data
             </Button>
