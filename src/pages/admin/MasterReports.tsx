@@ -504,13 +504,18 @@ export default function MasterReports() {
                       <td className="py-3 px-4 text-text-secondary">{sub['Reviewed By']}</td>
                       <td className="py-3 px-4 text-text-muted max-w-[200px] truncate">{sub.Remarks}</td>
                       <td className="py-3 px-4 text-right">
-                        <Button 
-                          variant="danger" 
-                          size="sm"
-                          onClick={(e) => handleDeleteSubmission(sub._raw.id, e)}
-                        >
-                          Delete
-                        </Button>
+                        <div className="flex justify-end gap-2 items-center">
+                          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedSub(sub._raw); }}>
+                            View Form
+                          </Button>
+                          <Button 
+                            variant="danger" 
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteSubmission(sub._raw.id, e); }}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -699,20 +704,24 @@ export default function MasterReports() {
         </div>
       )}
 
-      {/* Read-Only Slide-out Detail Panel */}
+      {/* Read-Only Modal Detail Panel */}
       {selectedSub && (
-        <div className="fixed top-0 right-0 w-full sm:w-96 lg:w-[32rem] h-full bg-bg-secondary border-l border-bg-border shadow-2xl flex flex-col z-50 transition-transform transform translate-x-0">
-          <div className="p-4 border-b border-bg-border flex justify-between items-center bg-bg-primary">
-            <div>
-              <h3 className="text-sm font-semibold text-white uppercase tracking-widest">Submission Details</h3>
-              <p className="text-xs text-text-secondary mt-0.5">ID: {selectedSub.id}</p>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-bg-secondary w-full max-w-2xl max-h-[85vh] rounded-xl border border-bg-border shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-5 border-b border-bg-border flex justify-between items-center bg-bg-primary shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-accent-blue" />
+                  Submission Details
+                </h3>
+                <p className="text-xs text-text-secondary mt-1">ID: {selectedSub.id}</p>
+              </div>
+              <button onClick={() => setSelectedSub(null)} className="text-text-muted hover:text-white p-2 rounded-full hover:bg-bg-secondary transition-colors">
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button onClick={() => setSelectedSub(null)} className="text-text-muted hover:text-white p-1">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
             <div className="flex justify-between items-start">
               <div>
                 <h2 className="text-lg font-bold text-white leading-tight">
@@ -742,8 +751,11 @@ export default function MasterReports() {
                 }
 
                 let entriesToRender: {key: string, label: string, value: any}[] = [];
-                if (selectedSub.form_templates?.fields) {
-                   entriesToRender = (Array.isArray(selectedSub.form_templates) ? selectedSub.form_templates[0]?.fields : selectedSub.form_templates.fields)
+                const templates = selectedSub.form_templates;
+                const fieldsData = Array.isArray(templates) ? templates[0]?.fields : templates?.fields;
+
+                if (fieldsData) {
+                   entriesToRender = (fieldsData as any[])
                      .filter((f: any) => selectedSub.data[f.id] !== undefined)
                      .map((f: any) => ({
                        key: f.id,
@@ -803,6 +815,7 @@ export default function MasterReports() {
               </div>
             )}
           </div>
+        </div>
         </div>
       )}
 
