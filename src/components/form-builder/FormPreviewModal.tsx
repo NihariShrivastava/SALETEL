@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, UploadCloud, MapPin } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Input } from '../ui/Input';
@@ -14,15 +14,46 @@ interface FormPreviewModalProps {
 }
 
 export default function FormPreviewModal({ isOpen, onClose, formName, formDescription, fields }: FormPreviewModalProps) {
+  const [formData, setFormData] = useState<Record<string, any>>({});
+
   if (!isOpen) return null;
 
+  const handleInputChange = (fieldId: string, value: any) => {
+    setFormData(prev => ({ ...prev, [fieldId]: value }));
+  };
+
+  const isFieldVisible = (field: FieldConfig, currentData: Record<string, any>): boolean => {
+    if (!field.conditional) return true;
+    const { dependsOn, operator, showWhen } = field.conditional;
+    if (!dependsOn) return true;
+
+    const dependentValue = currentData[dependsOn];
+    if (dependentValue === undefined || dependentValue === null) return false;
+
+    const valStr = String(dependentValue).toLowerCase();
+    const targetStr = String(showWhen).toLowerCase();
+
+    switch (operator) {
+      case 'equals':
+        return valStr === targetStr;
+      case 'not_equals':
+        return valStr !== targetStr;
+      case 'contains':
+        return valStr.includes(targetStr);
+      default:
+        return true;
+    }
+  };
+
   const renderFieldInput = (field: FieldConfig) => {
+    const val = formData[field.id] || '';
+
     switch (field.type) {
       case 'textarea':
-        return <textarea className="w-full bg-bg-primary border border-bg-border rounded-lg p-3 text-white focus:border-accent-blue focus:outline-none text-sm min-h-[100px]" placeholder={field.placeholder || ''}></textarea>;
+        return <textarea value={val} onChange={e => handleInputChange(field.id, e.target.value)} className="w-full bg-bg-primary border border-bg-border rounded-lg p-3 text-white focus:border-accent-blue focus:outline-none text-sm min-h-[100px]" placeholder={field.placeholder || ''}></textarea>;
       case 'select':
         return (
-          <select className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2.5 text-white focus:border-accent-blue focus:outline-none transition-colors text-sm">
+          <select value={val} onChange={e => handleInputChange(field.id, e.target.value)} className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2.5 text-white focus:border-accent-blue focus:outline-none transition-colors text-sm">
             <option value="">Select option...</option>
             {field.options?.map((opt, i) => (
               <option key={i} value={opt}>{opt}</option>
@@ -35,8 +66,15 @@ export default function FormPreviewModal({ isOpen, onClose, formName, formDescri
         return (
           <div className="space-y-2">
             {options.map((opt, i) => (
-              <label key={i} className="flex items-center gap-2 text-sm text-white">
-                <input type="radio" name={field.id} className="accent-accent-blue" />
+              <label key={i} className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                <input 
+                  type="radio" 
+                  name={field.id} 
+                  value={opt}
+                  checked={val === opt}
+                  onChange={e => handleInputChange(field.id, e.target.value)}
+                  className="accent-accent-blue" 
+                />
                 {opt}
               </label>
             ))}
@@ -87,7 +125,7 @@ export default function FormPreviewModal({ isOpen, onClose, formName, formDescri
         return <p className="text-sm text-text-secondary whitespace-pre-wrap">{field.helpText}</p>;
       default:
         // text, number, email, phone, date, time, datetime
-        return <Input type={field.type === 'datetime' ? 'datetime-local' : field.type} placeholder={field.placeholder || ''} />;
+        return <Input type={field.type === 'datetime' ? 'datetime-local' : field.type} placeholder={field.placeholder || ''} value={val} onChange={e => handleInputChange(field.id, e.target.value)} />;
     }
   };
 
@@ -121,6 +159,8 @@ export default function FormPreviewModal({ isOpen, onClose, formName, formDescri
                   </div>
                 ) : (
                   fields.map(field => {
+                    if (!isFieldVisible(field, formData)) return null;
+
                     const widthClass = field.width === 'half' ? 'col-span-1' : field.width === 'third' ? 'col-span-1 md:col-span-1' : 'col-span-1 md:col-span-2';
                     
                     if (field.type === 'section_header') {

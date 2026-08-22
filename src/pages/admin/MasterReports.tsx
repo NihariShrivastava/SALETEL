@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Download, Calendar, Filter, Database, Users, Building2, Loader2, Info, X, MapPin } from 'lucide-react';
+import { Download, Calendar, Filter, Database, Users, Building2, Loader2, Info, X, MapPin, PieChart, FileText } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -36,6 +37,11 @@ export default function MasterReports() {
   const [masterDump, setMasterDump] = useState<any[]>([]);
   const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  
+  const navigate = useNavigate();
   
   const [stats, setStats] = useState({
     totalSubmissions: 0,
@@ -245,6 +251,23 @@ export default function MasterReports() {
     }
   };
 
+  const handleOpenTemplateModal = async () => {
+    setShowTemplateModal(true);
+    if (templates.length === 0) {
+      setIsLoadingTemplates(true);
+      try {
+        const { data, error } = await supabase.from('form_templates').select('id, name, description').eq('is_active', true);
+        if (error) throw error;
+        setTemplates(data || []);
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to load templates');
+      } finally {
+        setIsLoadingTemplates(false);
+      }
+    }
+  };
+
   const tabs = [
     { id: 'domain', label: 'By Domain', icon: Database },
     { id: 'role', label: 'By Role', icon: Users },
@@ -260,7 +283,11 @@ export default function MasterReports() {
           <h2 className="text-2xl font-bold text-white tracking-tight">Master Reports Hub</h2>
           <p className="text-text-secondary text-sm mt-1">Analyze data collection performance across all vectors.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <Button onClick={handleOpenTemplateModal} className="bg-accent-blue hover:bg-accent-blue/90 text-white border-transparent shadow-lg shadow-accent-blue/20">
+            <PieChart className="w-4 h-4 mr-2" />
+            Analyze by Custom Dashboard
+          </Button>
           <Button onClick={handleExportExcel} className="bg-accent-green hover:bg-accent-green/90 text-white border-transparent shadow-lg shadow-accent-green/20">
             <Download className="w-4 h-4 mr-2" />
             Export Excel
@@ -602,6 +629,59 @@ export default function MasterReports() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Template Selector Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <Card className="w-full max-w-2xl flex flex-col max-h-[80vh]">
+            <div className="flex justify-between items-center p-6 border-b border-bg-border shrink-0">
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <PieChart className="w-5 h-5 text-accent-blue" />
+                  Select Form Template
+                </h3>
+                <p className="text-sm text-text-secondary mt-1">Choose a template to view its custom analytics dashboard.</p>
+              </div>
+              <button onClick={() => setShowTemplateModal(false)} className="text-text-muted hover:text-white p-2 rounded-full hover:bg-bg-secondary transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              {isLoadingTemplates ? (
+                <div className="flex flex-col items-center justify-center py-12 text-text-muted">
+                  <Loader2 className="w-8 h-8 animate-spin text-accent-blue mb-4" />
+                  <p>Loading templates...</p>
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-12 text-text-muted">
+                  No active templates found.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {templates.map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => navigate(`/admin/reports/custom/${t.id}`)}
+                      className="flex flex-col text-left p-4 bg-bg-secondary border border-bg-border rounded-xl hover:border-accent-blue/50 hover:bg-bg-hover transition-all group"
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-bg-primary rounded-lg text-accent-blue group-hover:scale-110 transition-transform">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <h4 className="font-semibold text-white truncate">{t.name}</h4>
+                      </div>
+                      <p className="text-xs text-text-secondary line-clamp-2">
+                        {t.description || 'No description provided.'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
       )}
     </div>

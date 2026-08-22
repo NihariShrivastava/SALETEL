@@ -161,17 +161,52 @@ export default function FillForm({ domainId, templateId, onSuccess, onCancel, is
     );
   };
 
+  const isFieldVisible = (field: FieldConfig, currentData: Record<string, any>): boolean => {
+    if (!field.conditional) return true;
+    const { dependsOn, operator, showWhen } = field.conditional;
+    if (!dependsOn) return true;
+
+    const dependentValue = currentData[dependsOn];
+    
+    // If the dependent field has no value, the condition fails (unless checking for empty string, but let's keep it simple)
+    if (dependentValue === undefined || dependentValue === null) return false;
+
+    const valStr = String(dependentValue).toLowerCase();
+    const targetStr = String(showWhen).toLowerCase();
+
+    switch (operator) {
+      case 'equals':
+        return valStr === targetStr;
+      case 'not_equals':
+        return valStr !== targetStr;
+      case 'contains':
+        return valStr.includes(targetStr);
+      default:
+        return true;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resolvedTemplateId || !user) return;
     
     setIsSubmitting(true);
     try {
+      // Clean formData to only include visible fields
+      const cleanedData: Record<string, any> = {};
+      fields.forEach(field => {
+        if (isFieldVisible(field, formData)) {
+          if (formData[field.id] !== undefined) {
+            cleanedData[field.id] = formData[field.id];
+          }
+        }
+      });
+
       const { error } = await supabase.from('submissions').insert({
         form_template_id: resolvedTemplateId,
         domain_id: activeDomainId || null,
         surveyor_id: user.id,
-        data: formData,
+        data: cleanedData,
         status: 'submitted'
       });
       
@@ -422,6 +457,8 @@ export default function FillForm({ domainId, templateId, onSuccess, onCancel, is
           <Card className="border-t-4 border-t-accent-blue p-6 md:p-8 space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {fields.map(field => {
+                if (!isFieldVisible(field, formData)) return null;
+
                 const widthClass = field.width === 'half' ? 'col-span-1' : field.width === 'third' ? 'col-span-1 md:col-span-1' : 'col-span-1 md:col-span-2';
                 
                 if (field.type === 'section_header') {

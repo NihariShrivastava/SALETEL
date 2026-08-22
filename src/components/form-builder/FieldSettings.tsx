@@ -141,6 +141,69 @@ export default function FieldSettings() {
           </select>
         </div>
 
+        {/* Conditional Logic */}
+        <div className="space-y-3 pt-4 border-t border-bg-border">
+          <div className="flex items-center justify-between">
+            <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Conditional Logic</label>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input 
+                type="checkbox" 
+                className="sr-only peer"
+                checked={!!field.conditional}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    updateField(field.id, { conditional: { dependsOn: '', showWhen: '', operator: 'equals' } });
+                  } else {
+                    updateField(field.id, { conditional: undefined });
+                  }
+                }}
+              />
+              <div className="w-9 h-5 bg-bg-primary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-accent-blue border border-bg-border"></div>
+            </label>
+          </div>
+          
+          {field.conditional && (
+            <div className="space-y-3 mt-3 bg-bg-primary p-3 rounded-lg border border-bg-border">
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-text-muted">Depends On Question</span>
+                <select 
+                  className="w-full bg-bg-secondary border border-bg-border rounded-md px-2 py-1.5 text-white focus:border-accent-blue focus:outline-none transition-colors text-xs"
+                  value={field.conditional.dependsOn}
+                  onChange={(e) => updateField(field.id, { conditional: { ...field.conditional!, dependsOn: e.target.value } })}
+                >
+                  <option value="">Select a field...</option>
+                  {fields.filter(f => f.id !== field.id && f.type !== 'section_header' && f.type !== 'paragraph_info').map(f => (
+                    <option key={f.id} value={f.id}>{f.label || 'Unnamed Field'}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-text-muted">Operator</span>
+                <select 
+                  className="w-full bg-bg-secondary border border-bg-border rounded-md px-2 py-1.5 text-white focus:border-accent-blue focus:outline-none transition-colors text-xs"
+                  value={field.conditional.operator}
+                  onChange={(e) => updateField(field.id, { conditional: { ...field.conditional!, operator: e.target.value as any } })}
+                >
+                  <option value="equals">Equals</option>
+                  <option value="not_equals">Does Not Equal</option>
+                  <option value="contains">Contains</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-text-muted">Target Value</span>
+                <Input 
+                  value={field.conditional.showWhen} 
+                  onChange={(e) => updateField(field.id, { conditional: { ...field.conditional!, showWhen: e.target.value } })} 
+                  placeholder="e.g. Yes"
+                  className="text-xs py-1.5"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );

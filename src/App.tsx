@@ -11,6 +11,7 @@ import SurveyorManagement from './pages/admin/SurveyorManagement';
 import CounterManagement from './pages/admin/CounterManagement';
 import Submissions from './pages/admin/Submissions';
 import MasterReports from './pages/admin/MasterReports';
+import CustomTemplateDashboard from './pages/admin/CustomTemplateDashboard';
 
 import SurveyorLayout from './pages/surveyor/SurveyorLayout';
 import SurveyorDashboard from './pages/surveyor/SurveyorDashboard';
@@ -77,6 +78,11 @@ function App() {
         <Route path="/admin/domains/:domainId/template" element={
           <AdminRoute>
             <FormTemplateBuilder />
+          </AdminRoute>
+        } />
+        <Route path="/admin/reports/custom/:templateId" element={
+          <AdminRoute>
+            <CustomTemplateDashboard />
           </AdminRoute>
         } />
 
