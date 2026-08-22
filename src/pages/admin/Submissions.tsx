@@ -26,7 +26,7 @@ export default function Submissions() {
   const fetchData = async () => {
     try {
       const [subsRes, domainsRes] = await Promise.all([
-        supabase.from('submissions').select('*, surveyors(full_name), domains(id, name), form_templates(fields)').order('submitted_at', { ascending: false }),
+        supabase.from('submissions').select('*, surveyors!surveyor_id(full_name), domains(id, name), form_templates(fields)').order('submitted_at', { ascending: false }),
         supabase.from('domains').select('id, name')
       ]);
 
@@ -81,7 +81,6 @@ export default function Submissions() {
     switch (status) {
       case 'submitted': return <Badge variant="blue">Submitted</Badge>;
       case 'reviewed': return <Badge variant="yellow">Reviewed</Badge>;
-      case 'approved': return <Badge variant="green">Approved</Badge>;
       case 'rejected': return <Badge variant="red">Rejected</Badge>;
       default: return <Badge variant="gray">{status}</Badge>;
     }
@@ -131,7 +130,6 @@ export default function Submissions() {
               >
                 <option value="all">All Statuses</option>
                 <option value="submitted">Submitted</option>
-                <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
               </select>
             </div>
@@ -225,51 +223,62 @@ export default function Submissions() {
             <div className="text-xs text-text-muted uppercase tracking-widest border-b border-bg-border pb-2">Submitted Data</div>
             
             <div className="space-y-4">
-              {selectedSub.data && Object.keys(selectedSub.data).length > 0 ? Object.entries(selectedSub.data).map(([key, value]) => {
-                let label = key;
+              {(() => {
+                if (!selectedSub.data || Object.keys(selectedSub.data).length === 0) {
+                  return <div className="text-text-muted italic text-sm">No data entries found.</div>;
+                }
+
+                let entriesToRender: {key: string, label: string, value: any}[] = [];
                 if (selectedSub.form_templates?.fields) {
-                  const fieldConfig = selectedSub.form_templates.fields.find((f: any) => f.id === key);
-                  if (fieldConfig && fieldConfig.label) {
-                    label = fieldConfig.label;
-                  }
+                   entriesToRender = selectedSub.form_templates.fields
+                     .filter((f: any) => selectedSub.data[f.id] !== undefined)
+                     .map((f: any) => ({
+                       key: f.id,
+                       label: f.label || f.id,
+                       value: selectedSub.data[f.id]
+                     }));
+                } else {
+                   entriesToRender = Object.entries(selectedSub.data).map(([k, v]) => ({
+                       key: k,
+                       label: k,
+                       value: v
+                   }));
                 }
 
-                // If value is an object (like a location object {lat, lng}), stringify it, or ignore if we want to handle map separately
-                // but the form outputs raw data.
-                let displayValue = value as string;
-                if (typeof value === 'object' && value !== null) {
-                  if ('lat' in value && 'lng' in value) {
-                     displayValue = `Lat: ${(value as any).lat}, Lng: ${(value as any).lng}`;
-                  } else if (Array.isArray(value)) {
-                     displayValue = value.join(', ');
-                  } else {
-                     displayValue = JSON.stringify(value);
+                return entriesToRender.map(({key, label, value}) => {
+                  let displayValue = value as string;
+                  if (typeof value === 'object' && value !== null) {
+                    if ('lat' in value && 'lng' in value) {
+                       displayValue = `Lat: ${(value as any).lat}, Lng: ${(value as any).lng}`;
+                    } else if (Array.isArray(value)) {
+                       displayValue = value.join(', ');
+                    } else {
+                       displayValue = JSON.stringify(value);
+                    }
                   }
-                }
 
-                return (
-                  <div key={key} className="bg-bg-primary rounded-lg border border-bg-border p-3">
-                    <span className="block text-[10px] uppercase text-text-secondary mb-1 font-semibold">{label}</span>
-                    {typeof displayValue === 'string' && displayValue.startsWith('http') && displayValue.includes('supabase.co/storage/v1/object/public/') ? (
-                      <div className="mt-1">
-                        {displayValue.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                          <a href={displayValue} target="_blank" rel="noreferrer" className="block">
-                            <img src={displayValue} alt={key} className="max-h-32 rounded border border-bg-border object-contain bg-white" />
-                          </a>
-                        ) : (
-                          <a href={displayValue} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline text-sm break-all">
-                            View Uploaded File
-                          </a>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-sm text-white break-words">{displayValue}</span>
-                    )}
-                  </div>
-                );
-              }) : (
-                <div className="text-text-muted italic text-sm">No data entries found.</div>
-              )}
+                  return (
+                    <div key={key} className="bg-bg-primary rounded-lg border border-bg-border p-3">
+                      <span className="block text-[10px] uppercase text-text-secondary mb-1 font-semibold">{label}</span>
+                      {typeof displayValue === 'string' && displayValue.startsWith('http') && displayValue.includes('supabase.co/storage/v1/object/public/') ? (
+                        <div className="mt-1">
+                          {displayValue.match(/\.(jpeg|jpg|gif|png)$/i) ? (
+                            <a href={displayValue} target="_blank" rel="noreferrer" className="block">
+                              <img src={displayValue} alt={key} className="max-h-32 rounded border border-bg-border object-contain bg-white" />
+                            </a>
+                          ) : (
+                            <a href={displayValue} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline text-sm break-all">
+                              View Uploaded File
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-white break-words">{displayValue}</span>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
             <div className="pt-4 space-y-2">

@@ -1,61 +1,66 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
-import { Phone, User, MapPin, Building2, Loader2, PhoneCall } from 'lucide-react';
+import { PhoneCall, Loader2, Users, Flame, ThermometerSun, Snowflake, PhoneOff, PhoneForwarded } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function TelecallerDashboard() {
   const { user } = useAuth();
-  const [assignedSurveyors, setAssignedSurveyors] = useState<any[]>([]);
-  const [assignedCounters, setAssignedCounters] = useState<any[]>([]);
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
+  const [leadCounts, setLeadCounts] = useState<Record<string, number>>({
+    new: 0,
+    cold: 0,
+    warm: 0,
+    hot: 0,
+    immediate: 0,
+    skipped: 0,
+    wrong_number: 0
+  });
 
   useEffect(() => {
     if (!user) return;
     
-    const fetchData = async () => {
+    const fetchLeads = async () => {
       try {
-        // Telecallers no longer have direct assigned_users.
-        // Instead, we find Team Leads who have assigned this Telecaller,
-        // and fetch the other Surveyors assigned to those Team Leads.
-        let surveyorIdsToFetch: string[] = [];
+        const { data } = await supabase
+          .from('submissions')
+          .select('id, lead_status, lead_status_updated_at')
+          .eq('telecaller_id', user.id);
 
-        const { data: teamLeads } = await supabase
-          .from('surveyors')
-          .select('assigned_users')
-          .contains('assigned_users', [user.id]);
+        if (data) {
+          const counts: Record<string, number> = {
+            new: 0, cold: 0, warm: 0, hot: 0, immediate: 0, skipped: 0, wrong_number: 0
+          };
+          
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-        if (teamLeads && teamLeads.length > 0) {
-          const allAssigned = new Set<string>();
-          teamLeads.forEach(tl => {
-             tl.assigned_users?.forEach((id: string) => {
-               if (id !== user.id) allAssigned.add(id);
-             });
+          data.forEach(lead => {
+            let status = lead.lead_status || 'new';
+            
+            // Automated Reset Logic
+            if (status === 'skipped' && lead.lead_status_updated_at) {
+              const updatedDate = new Date(lead.lead_status_updated_at);
+              if (updatedDate < today) {
+                status = 'new';
+              }
+            }
+            
+            counts[status] = (counts[status] || 0) + 1;
           });
-          surveyorIdsToFetch = Array.from(allAssigned);
+
+          setLeadCounts(counts);
         }
-
-        const counterIds = (user as any).counter_ids || [];
-        const [survRes, counterRes] = await Promise.all([
-          surveyorIdsToFetch.length > 0 
-            ? supabase.from('surveyors').select('id, full_name, username, phone, location').in('id', surveyorIdsToFetch).eq('user_role_id', (await supabase.from('user_roles').select('id').eq('name', 'Surveyor').single()).data?.id || '')
-            : Promise.resolve({ data: [] }),
-          counterIds.length > 0
-            ? supabase.from('counters').select('id, username, location').in('id', counterIds)
-            : Promise.resolve({ data: [] })
-        ]);
-
-        setAssignedSurveyors(survRes.data || []);
-        setAssignedCounters(counterRes.data || []);
       } catch (err) {
-        console.error('Failed to fetch telecaller data', err);
+        console.error('Failed to fetch leads', err);
       } finally {
         setIsLoading(false);
       }
     };
     
-    fetchData();
+    fetchLeads();
   }, [user]);
 
   if (isLoading) {
@@ -66,6 +71,16 @@ export default function TelecallerDashboard() {
     );
   }
 
+  const buckets = [
+    { id: 'new', label: 'New Leads', count: leadCounts.new, color: 'bg-accent-green', border: 'border-l-accent-green', text: 'text-accent-green', icon: Users },
+    { id: 'immediate', label: 'Immediate Leads', count: leadCounts.immediate, color: 'bg-accent-red', border: 'border-l-accent-red', text: 'text-accent-red', icon: Flame, pulse: true },
+    { id: 'hot', label: 'Hot Leads', count: leadCounts.hot, color: 'bg-red-500', border: 'border-l-red-500', text: 'text-red-500', icon: Flame },
+    { id: 'warm', label: 'Warm Leads', count: leadCounts.warm, color: 'bg-orange-500', border: 'border-l-orange-500', text: 'text-orange-500', icon: ThermometerSun },
+    { id: 'cold', label: 'Cold Leads', count: leadCounts.cold, color: 'bg-blue-500', border: 'border-l-blue-500', text: 'text-blue-500', icon: Snowflake },
+    { id: 'skipped', label: 'Call Skipped/Not Connected', count: leadCounts.skipped, color: 'bg-purple-500', border: 'border-l-purple-500', text: 'text-purple-500', icon: PhoneOff },
+    { id: 'wrong_number', label: 'Wrong Number', count: leadCounts.wrong_number, color: 'bg-slate-500', border: 'border-l-slate-500', text: 'text-slate-500', icon: PhoneForwarded },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="bg-bg-secondary border border-bg-border rounded-2xl p-8 relative overflow-hidden">
@@ -75,102 +90,30 @@ export default function TelecallerDashboard() {
             <PhoneCall className="w-8 h-8 text-accent-blue" />
             Telecaller Portal
           </h2>
-          <p className="text-text-secondary">Manage and contact your assigned field agents and counters.</p>
+          <p className="text-text-secondary">Manage and track your assigned leads.</p>
         </div>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* Surveyors List */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm font-semibold text-white uppercase tracking-widest flex items-center gap-2">
-              <User className="w-4 h-4 text-accent-blue" />
-              Assigned Surveyors
-            </h3>
-            <Badge variant="blue">{assignedSurveyors.length}</Badge>
-          </div>
-          
-          <div className="grid gap-4">
-            {assignedSurveyors.map(surv => (
-              <Card key={surv.id} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-accent-blue/50 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-bg-secondary border border-bg-border flex items-center justify-center">
-                    <User className="w-5 h-5 text-text-secondary" />
-                  </div>
-                  <div>
-                    <h4 className="text-white font-bold">{surv.full_name}</h4>
-                    <p className="text-xs text-text-muted">@{surv.username}</p>
-                  </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {buckets.map(bucket => {
+          const Icon = bucket.icon;
+          return (
+            <Card 
+              key={bucket.id} 
+              className={`p-6 cursor-pointer transition-all bg-bg-secondary border-y border-r border-y-bg-border border-r-bg-border border-l-4 hover:-translate-y-1 hover:bg-bg-hover ${bucket.border} ${bucket.pulse ? 'animate-pulse-slow' : ''}`}
+              onClick={() => navigate(`/telecaller/leads/${bucket.id}`)}
+            >
+              <div className="flex justify-between items-start mb-4">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${bucket.color}/20`}>
+                  <Icon className={`w-6 h-6 ${bucket.text}`} />
                 </div>
-                
-                <div className="flex flex-col gap-2 w-full sm:w-auto">
-                  {surv.phone && (
-                    <div className="flex items-center gap-2 text-sm text-text-secondary">
-                      <Phone className="w-4 h-4 text-accent-blue" />
-                      <a href={`tel:${surv.phone}`} className="hover:text-white transition-colors">{surv.phone}</a>
-                    </div>
-                  )}
-                  {surv.location && (
-                    <div className="flex items-center gap-2 text-sm text-text-secondary">
-                      <MapPin className="w-4 h-4 text-text-muted" />
-                      <span>{surv.location}</span>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            ))}
-            
-            {assignedSurveyors.length === 0 && (
-              <div className="p-8 text-center border border-dashed border-bg-border rounded-xl">
-                <p className="text-text-muted italic">No surveyors assigned.</p>
+                <div className="text-3xl font-bold text-white">{bucket.count}</div>
               </div>
-            )}
-          </div>
-        </div>
-        
-        {/* Counters List */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm font-semibold text-white uppercase tracking-widest flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-accent-purple" />
-              Assigned Counters
-            </h3>
-            <Badge variant="blue">{assignedCounters.length}</Badge>
-          </div>
-          
-          <div className="grid gap-4">
-            {assignedCounters.map(counter => (
-              <Card key={counter.id} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-accent-purple/50 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-bg-secondary border border-bg-border flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-text-secondary" />
-                  </div>
-                  <div>
-                    <h4 className="text-white font-bold">{counter.username}</h4>
-                    <p className="text-xs text-text-muted">Counter Workstation</p>
-                  </div>
-                </div>
-                
-                <div className="flex flex-col gap-2 w-full sm:w-auto">
-                  {counter.location && (
-                    <div className="flex items-center gap-2 text-sm text-text-secondary">
-                      <MapPin className="w-4 h-4 text-text-muted" />
-                      <span>{counter.location}</span>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            ))}
-            
-            {assignedCounters.length === 0 && (
-              <div className="p-8 text-center border border-dashed border-bg-border rounded-xl">
-                <p className="text-text-muted italic">No counters assigned.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
+              <h3 className="text-lg font-bold text-white mb-1">{bucket.label}</h3>
+              <p className="text-xs text-text-muted uppercase tracking-widest">Click to view leads</p>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

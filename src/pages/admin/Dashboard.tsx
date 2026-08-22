@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { FileText, CheckCircle2, Clock, Users, Loader2 } from 'lucide-react';
+import { FileText, CheckCircle2, Clock, Users, Loader2, Briefcase, PhoneCall } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { format, isToday } from 'date-fns';
@@ -10,7 +10,7 @@ const COLORS = ['#4f6ef7', '#22c55e', '#eab308', '#06b6d4', '#a855f7', '#f97316'
 
 export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
-  const [stats, setStats] = useState({ total: 0, pending: 0, approvedToday: 0, activeSurveyors: 0 });
+  const [stats, setStats] = useState({ total: 0, activeSurveyors: 0, totalTeamLead: 0, totalTelecaller: 0 });
   const [lineData, setLineData] = useState<any[]>([]);
   const [pieData, setPieData] = useState<any[]>([]);
   const [recentSubmissions, setRecentSubmissions] = useState<any[]>([]);
@@ -18,29 +18,27 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [subsRes, surveyorsRes] = await Promise.all([
-          supabase.from('submissions').select('*, surveyors(full_name), domains(name)').order('submitted_at', { ascending: false }),
-          supabase.from('surveyors').select('*', { count: 'exact', head: true }).eq('is_active', true)
+        const [subsRes, surveyorsRes, rolesRes] = await Promise.all([
+          supabase.from('submissions').select('*, surveyors!surveyor_id(full_name), domains(name)').order('submitted_at', { ascending: false }),
+          supabase.from('surveyors').select('user_role_id').eq('is_active', true),
+          supabase.from('user_roles').select('id, name')
         ]);
 
         if (subsRes.error) throw subsRes.error;
         if (surveyorsRes.error) throw surveyorsRes.error;
+        if (rolesRes.error) throw rolesRes.error;
 
         const subs = subsRes.data || [];
         
         // Calculate Top Stats
-        let pending = 0;
-        let approvedToday = 0;
         
         // Map for charts
         const dateMap: Record<string, number> = {};
         const domainMap: Record<string, number> = {};
 
         subs.forEach(sub => {
-          if (sub.status === 'submitted') pending++;
           
           const date = new Date(sub.submitted_at);
-          if (sub.status === 'approved' && isToday(date)) approvedToday++;
 
           // Line Chart aggregation
           const dateStr = format(date, 'MMM dd');
@@ -51,11 +49,25 @@ export default function Dashboard() {
           domainMap[domainName] = (domainMap[domainName] || 0) + 1;
         });
 
+        const rolesMap: Record<string, string> = {};
+        (rolesRes.data || []).forEach(r => rolesMap[r.id] = r.name);
+
+        let activeSurveyors = 0;
+        let totalTeamLead = 0;
+        let totalTelecaller = 0;
+
+        (surveyorsRes.data || []).forEach(s => {
+          const roleName = rolesMap[s.user_role_id];
+          if (roleName === 'Surveyor') activeSurveyors++;
+          if (roleName === 'Team Lead') totalTeamLead++;
+          if (roleName === 'Telecaller') totalTelecaller++;
+        });
+
         setStats({
           total: subs.length,
-          pending,
-          approvedToday,
-          activeSurveyors: surveyorsRes.count || 0
+          activeSurveyors,
+          totalTeamLead,
+          totalTelecaller
         });
 
         // Format Line Data (reverse to show chronological order)
@@ -103,9 +115,9 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Submissions', value: stats.total.toString(), icon: FileText, color: 'text-accent-blue', bg: 'bg-accent-blue/10' },
-          { label: 'Pending Review', value: stats.pending.toString(), icon: Clock, color: 'text-accent-yellow', bg: 'bg-accent-yellow/10' },
-          { label: 'Approved Today', value: stats.approvedToday.toString(), icon: CheckCircle2, color: 'text-accent-green', bg: 'bg-accent-green/10' },
           { label: 'Active Surveyors', value: stats.activeSurveyors.toString(), icon: Users, color: 'text-accent-purple', bg: 'bg-accent-purple/10' },
+          { label: 'Total Team Lead', value: stats.totalTeamLead.toString(), icon: Briefcase, color: 'text-accent-yellow', bg: 'bg-accent-yellow/10' },
+          { label: 'Total Telecaller', value: stats.totalTelecaller.toString(), icon: PhoneCall, color: 'text-accent-green', bg: 'bg-accent-green/10' },
         ].map((stat, i) => (
           <Card key={i} className="flex items-center p-5">
             <div className={`p-3 rounded-lg ${stat.bg} mr-4`}>

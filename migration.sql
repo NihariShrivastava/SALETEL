@@ -61,3 +61,17 @@ BEGIN
     ALTER TABLE surveyors ADD COLUMN user_role_id uuid REFERENCES user_roles(id);
   END IF;
 END $$;
+
+-- 9. Add Telecaller CRM tracking columns to submissions table
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS telecaller_id uuid REFERENCES surveyors(id);
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS lead_status text DEFAULT 'new';
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS telecaller_remark text;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS lead_status_updated_at timestamp with time zone;
+
+
+-- Add Lead Management columns to submissions
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS telecaller_id uuid REFERENCES surveyors(id);
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS lead_status varchar(50) DEFAULT 'new';
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS telecaller_remark text;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS lead_status_updated_at timestamp with time zone;
+

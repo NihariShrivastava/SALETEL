@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { FileText, CheckCircle, XCircle, Clock, Loader2, X, ShieldAlert } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Clock, Loader2, X, Users, PhoneCall, Activity, Flame } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
@@ -10,12 +11,13 @@ import toast from 'react-hot-toast';
 
 export default function TeamLeadDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [teamCounts, setTeamCounts] = useState({ surveyors: 0, telecallers: 0 });
   
   // Status filter for tabs
-  const [activeTab, setActiveTab] = useState<'pending' | 'reviewed'>('pending');
 
   const fetchSubmissions = async () => {
     if (!user?.assigned_users || user.assigned_users.length === 0) {
@@ -28,14 +30,36 @@ export default function TeamLeadDashboard() {
         .from('submissions')
         .select(`
           *,
-          surveyor:surveyors(full_name, username),
+          surveyor:surveyors!surveyor_id(full_name, username),
           form_templates(name, fields)
         `)
         .in('surveyor_id', user.assigned_users)
         .order('submitted_at', { ascending: false });
 
       if (error) throw error;
-      setSubmissions(data || []);
+      let finalData = data || [];
+      const uniqueTelecallerIds = Array.from(new Set(finalData.filter(s => s.telecaller_id).map(s => s.telecaller_id)));
+
+      if (uniqueTelecallerIds.length > 0) {
+        const { data: telecallersData } = await supabase
+          .from('surveyors')
+          .select('id, full_name, username')
+          .in('id', uniqueTelecallerIds);
+        
+        if (telecallersData) {
+          // Add telecaller details to submissions manually
+          finalData.forEach(sub => {
+            if (sub.telecaller_id) {
+              sub.telecaller = telecallersData.find(t => t.id === sub.telecaller_id);
+            }
+          });
+        }
+      }
+      
+      setSubmissions(finalData);
+      
+      let surveyorsCount = user?.assigned_users?.length || 0;
+      setTeamCounts({ surveyors: surveyorsCount, telecallers: uniqueTelecallerIds.length });
     } catch (err) {
       console.error('Failed to fetch submissions', err);
       toast.error('Failed to load submissions.');
@@ -48,33 +72,6 @@ export default function TeamLeadDashboard() {
     fetchSubmissions();
   }, [user]);
 
-  const handleUpdateStatus = async (status: 'approved' | 'reverted', subToUpdate: any, notes?: string) => {
-    const targetSub = subToUpdate || selectedSub;
-    if (!targetSub) return;
-    
-    try {
-      const { error } = await supabase
-        .from('submissions')
-        .update({
-          status,
-          admin_notes: notes || targetSub.admin_notes,
-          reviewed_by: user.id,
-          reviewed_at: new Date().toISOString()
-        })
-        .eq('id', targetSub.id);
-
-      if (error) throw error;
-      
-      toast.success(`Submission ${status}`);
-      if (selectedSub?.id === targetSub.id) {
-        setSelectedSub(null);
-      }
-      fetchSubmissions();
-    } catch (err: any) {
-      console.error('Update status error:', err);
-      toast.error(err.message || 'Failed to update status');
-    }
-  };
 
   if (isLoading) {
     return (
@@ -84,124 +81,172 @@ export default function TeamLeadDashboard() {
     );
   }
 
-  const pendingSubs = submissions.filter(s => s.status === 'submitted');
-  const reviewedSubs = submissions.filter(s => s.status === 'approved' || s.status === 'reverted' || s.status === 'rejected');
 
-  const displaySubs = activeTab === 'pending' ? pendingSubs : reviewedSubs;
+
+  // Group submissions by telecaller for report
+  const telecallerReport = submissions.reduce((acc, sub) => {
+    if (!sub.telecaller_id) return acc;
+    
+    if (!acc[sub.telecaller_id]) {
+      acc[sub.telecaller_id] = {
+        id: sub.telecaller_id,
+        name: sub.telecaller?.full_name || sub.telecaller?.username || 'Unknown Telecaller',
+        total: 0,
+        new: 0,
+        cold: 0,
+        warm: 0,
+        hot: 0,
+        immediate: 0,
+        skipped: 0
+      };
+    }
+    
+    acc[sub.telecaller_id].total++;
+    const status = sub.lead_status || 'new';
+    if (status === 'new') acc[sub.telecaller_id].new++;
+    else if (status === 'cold') acc[sub.telecaller_id].cold++;
+    else if (status === 'warm') acc[sub.telecaller_id].warm++;
+    else if (status === 'hot') acc[sub.telecaller_id].hot++;
+    else if (status === 'immediate') acc[sub.telecaller_id].immediate++;
+    else if (status === 'skipped' || status === 'wrong_number') acc[sub.telecaller_id].skipped++;
+    
+    return acc;
+  }, {} as Record<string, any>);
+  
+  const telecallerData = Object.values(telecallerReport);
+  const immediateLeads = submissions.filter(s => s.lead_status === 'immediate');
 
   return (
     <div className="space-y-6">
+      {immediateLeads.length > 0 && (
+        <div className="bg-accent-red/10 border border-accent-red/50 rounded-xl p-4 flex items-start gap-4 animate-pulse-slow shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+          <div className="bg-accent-red/20 p-2 rounded-full shrink-0">
+            <Flame className="w-6 h-6 text-accent-red" />
+          </div>
+          <div>
+            <h3 className="text-accent-red font-bold text-lg mb-1">Immediate Leads Alert!</h3>
+            <p className="text-white text-sm">
+              You have <span className="font-bold">{immediateLeads.length}</span> leads marked as IMMEDIATE. 
+              Please review these immediately in the Lead Analysis view.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="bg-bg-secondary border border-bg-border rounded-2xl p-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-accent-blue/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
             <h2 className="text-3xl font-bold text-white tracking-tight mb-2">Team Lead Portal</h2>
-            <p className="text-text-secondary">Review and approve forms submitted by your field agents.</p>
+            <p className="text-text-secondary">Review forms and manage leads for your team.</p>
           </div>
           
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <div className="bg-bg-primary border border-bg-border rounded-lg p-4 flex flex-col items-center min-w-[100px]">
-              <div className="text-2xl font-bold text-white">{pendingSubs.length}</div>
-              <div className="text-[10px] uppercase text-text-muted font-bold tracking-widest mt-1">Pending</div>
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="w-4 h-4 text-accent-blue" />
+                <div className="text-xl font-bold text-white">{teamCounts.surveyors}</div>
+              </div>
+              <div className="text-[10px] uppercase text-text-muted font-bold tracking-widest text-center">Surveyors</div>
             </div>
             <div className="bg-bg-primary border border-bg-border rounded-lg p-4 flex flex-col items-center min-w-[100px]">
-              <div className="text-2xl font-bold text-white">{reviewedSubs.length}</div>
-              <div className="text-[10px] uppercase text-text-muted font-bold tracking-widest mt-1">Reviewed</div>
+              <div className="flex items-center gap-2 mb-1">
+                <PhoneCall className="w-4 h-4 text-accent-green" />
+                <div className="text-xl font-bold text-white">{teamCounts.telecallers}</div>
+              </div>
+              <div className="text-[10px] uppercase text-text-muted font-bold tracking-widest text-center">Telecallers</div>
+            </div>
+            <div className="bg-bg-primary border border-bg-border rounded-lg p-4 flex flex-col items-center min-w-[100px]">
+              <div className="flex items-center gap-2 mb-1">
+                <FileText className="w-4 h-4 text-accent-yellow" />
+                <div className="text-xl font-bold text-white">{submissions.length}</div>
+              </div>
+              <div className="text-[10px] uppercase text-text-muted font-bold tracking-widest text-center">Forms Filled</div>
             </div>
           </div>
         </div>
       </div>
       
-      <div className="flex gap-2 border-b border-bg-border pb-px overflow-x-auto hide-scrollbar">
-        <button
-          onClick={() => setActiveTab('pending')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'pending' ? 'border-accent-blue text-white' : 'border-transparent text-text-secondary hover:text-white'}`}
-        >
-          Requires Action ({pendingSubs.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('reviewed')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'reviewed' ? 'border-accent-blue text-white' : 'border-transparent text-text-secondary hover:text-white'}`}
-        >
-          Review History
-        </button>
-      </div>
 
-      <Card className="p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-sm min-w-[700px]">
-          <thead>
-            <tr className="bg-bg-primary/50 text-text-muted text-[10px] uppercase tracking-widest border-b border-bg-border">
-              <th className="py-3 px-5 font-semibold">Surveyor</th>
-              <th className="py-3 px-5 font-semibold">Form / Date</th>
-              <th className="py-3 px-5 font-semibold">Status</th>
-              <th className="py-3 px-5 font-semibold text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displaySubs.map((sub, i) => (
-              <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors">
-                <td className="py-4 px-5">
-                  <div className="font-medium text-white">{sub.surveyor?.full_name}</div>
-                  <div className="text-xs text-text-muted">@{sub.surveyor?.username}</div>
-                </td>
-                <td className="py-4 px-5">
-                  <div className="text-white">{sub.form_templates?.name || 'Unknown'}</div>
-                  <div className="text-xs text-text-secondary">{format(new Date(sub.submitted_at), 'MMM dd, yyyy hh:mm a')}</div>
-                </td>
-                <td className="py-4 px-5">
-                  <Badge variant={
-                    sub.status === 'submitted' ? 'blue' :
-                    sub.status === 'approved' ? 'green' : 
-                    sub.status === 'rejected' ? 'red' : 'yellow'
-                  }>
-                    {sub.status === 'reverted' ? 'Reverted' : sub.status}
-                  </Badge>
-                </td>
-                <td className="py-4 px-5 text-right">
-                  {activeTab === 'pending' ? (
-                    <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedSub(sub)}>
-                        Review
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-accent-red hover:text-white hover:bg-accent-red/20 border-accent-red/30 px-2"
-                        onClick={() => {
-                          const notes = prompt("Enter notes for reverting this form (why does it need changes?):");
-                          if (notes !== null) handleUpdateStatus('reverted', sub, notes);
-                        }}
-                      >
-                        Revert
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        className="bg-accent-green hover:bg-accent-green/90 text-white shadow-lg shadow-accent-green/20 px-2"
-                        onClick={() => handleUpdateStatus('approved', sub)}
-                      >
-                        Approve
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedSub(sub)}>
-                      View Details
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-white">Forms Available for Lead Analysis</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from(new Set(submissions.filter(s => s.form_template_id).map(s => s.form_template_id))).map(templateId => {
+              const templateSubs = submissions.filter(s => s.form_template_id === templateId);
+              const templateName = templateSubs[0]?.form_templates?.name || 'Unknown Form';
+              return (
+                <div key={templateId as string} className="bg-bg-primary border border-bg-border rounded-xl p-5 hover:border-accent-blue/50 transition-colors">
+                  <h4 className="font-bold text-white text-lg mb-1">{templateName}</h4>
+                  <p className="text-sm text-text-secondary mb-4">{templateSubs.length} entries available</p>
+                  <Link to={`/teamlead/analyze/${templateId}`}>
+                    <Button variant="outline" className="w-full text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
+                      <Activity className="w-4 h-4 mr-2" /> Analyze Leads & Assign
                     </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {displaySubs.length === 0 && (
-              <tr>
-                <td colSpan={4} className="py-12 text-center text-text-muted italic">
-                  {activeTab === 'pending' ? 'No pending submissions to review. Great job!' : 'No reviewed submissions yet.'}
-                </td>
-              </tr>
+                  </Link>
+                </div>
+              );
+            })}
+            {submissions.length === 0 && (
+              <div className="col-span-full py-8 text-center text-text-muted italic border-2 border-dashed border-bg-border rounded-xl">
+                No forms have been filled by your surveyors yet.
+              </div>
             )}
-          </tbody>
-        </table>
-        </div>
-      </Card>
+          </div>
+        </Card>
+
+        {/* Telecaller Performance Report */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-white">Telecaller Performance Report</h3>
+            <Badge variant="blue">{telecallerData.length} Active Telecallers</Badge>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="bg-bg-primary border-b border-bg-border text-text-muted text-[10px] uppercase tracking-widest">
+                  <th className="py-3 px-4 font-semibold rounded-tl-lg">Telecaller</th>
+                  <th className="py-3 px-4 font-semibold text-center">Total Assigned</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">New</th>
+                  <th className="py-3 px-4 font-semibold text-center text-blue-500">Cold</th>
+                  <th className="py-3 px-4 font-semibold text-center text-orange-500">Warm</th>
+                  <th className="py-3 px-4 font-semibold text-center text-red-500">Hot</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
+                  <th className="py-3 px-4 font-semibold text-center text-purple-500 rounded-tr-lg">Skipped/No Connect</th>
+                </tr>
+              </thead>
+              <tbody>
+                {telecallerData.map((tc: any, i) => (
+                  <tr 
+                    key={i} 
+                    className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors cursor-pointer group"
+                    onClick={() => navigate(`/teamlead/telecaller/${tc.id}`)}
+                  >
+                    <td className="py-3 px-4 font-medium text-white group-hover:text-accent-blue transition-colors">
+                      {tc.name}
+                    </td>
+                    <td className="py-3 px-4 text-center font-bold">{tc.total}</td>
+                    <td className="py-3 px-4 text-center text-text-secondary">{tc.new}</td>
+                    <td className="py-3 px-4 text-center text-text-secondary">{tc.cold}</td>
+                    <td className="py-3 px-4 text-center text-text-secondary">{tc.warm}</td>
+                    <td className="py-3 px-4 text-center text-text-secondary">{tc.hot}</td>
+                    <td className="py-3 px-4 text-center font-bold text-accent-red">{tc.immediate}</td>
+                    <td className="py-3 px-4 text-center text-text-secondary">{tc.skipped}</td>
+                  </tr>
+                ))}
+                {telecallerData.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-text-muted italic">
+                      No leads have been assigned to your telecallers yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
 
       {/* Submission Review Modal */}
       {selectedSub && (
@@ -219,15 +264,29 @@ export default function TeamLeadDashboard() {
             
             <div className="p-6 overflow-y-auto space-y-6 bg-bg-primary flex-1">
               <div className="space-y-4">
-                {selectedSub.data && Object.keys(selectedSub.data).length > 0 ? Object.entries(selectedSub.data).map(([key, value]) => {
-                  let label = key;
-                  if (selectedSub.form_templates?.fields) {
-                    const fieldConfig = selectedSub.form_templates.fields.find((f: any) => f.id === key);
-                    if (fieldConfig && fieldConfig.label) {
-                      label = fieldConfig.label;
-                    }
-                  }
+              {(() => {
+                if (!selectedSub.data || Object.keys(selectedSub.data).length === 0) {
+                  return <div className="text-text-muted italic text-sm text-center py-8">No data entries found.</div>;
+                }
 
+                let entriesToRender: {key: string, label: string, value: any}[] = [];
+                if (selectedSub.form_templates?.fields) {
+                   entriesToRender = selectedSub.form_templates.fields
+                     .filter((f: any) => selectedSub.data[f.id] !== undefined)
+                     .map((f: any) => ({
+                       key: f.id,
+                       label: f.label || f.id,
+                       value: selectedSub.data[f.id]
+                     }));
+                } else {
+                   entriesToRender = Object.entries(selectedSub.data).map(([k, v]) => ({
+                       key: k,
+                       label: k,
+                       value: v
+                   }));
+                }
+
+                return entriesToRender.map(({key, label, value}) => {
                   let displayValue = value as string;
                   if (typeof value === 'object' && value !== null) {
                     if ('lat' in value && 'lng' in value) {
@@ -259,9 +318,8 @@ export default function TeamLeadDashboard() {
                       )}
                     </div>
                   );
-                }) : (
-                  <div className="text-text-muted italic text-sm text-center py-8">No data entries found.</div>
-                )}
+                });
+              })()}
               </div>
             </div>
             

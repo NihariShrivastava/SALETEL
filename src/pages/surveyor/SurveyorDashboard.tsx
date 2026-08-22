@@ -29,7 +29,6 @@ export default function SurveyorDashboard() {
   const [showFillForm, setShowFillForm] = useState(false);
 
   // Filters
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'reverted' | 'approved'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [domainFilter, setDomainFilter] = useState('all');
   const [templateFilter, setTemplateFilter] = useState('all');
@@ -116,14 +115,6 @@ export default function SurveyorDashboard() {
   useEffect(() => {
     let filtered = [...allSubmissions];
 
-    if (activeTab === 'pending') {
-      filtered = filtered.filter(s => s.status === 'submitted');
-    } else if (activeTab === 'reverted') {
-      filtered = filtered.filter(s => s.status === 'reverted');
-    } else if (activeTab === 'approved') {
-      filtered = filtered.filter(s => s.status === 'approved' || s.status === 'reviewed');
-    }
-
     if (domainFilter !== 'all') {
       filtered = filtered.filter(s => s.domain_id === domainFilter);
     }
@@ -150,7 +141,7 @@ export default function SurveyorDashboard() {
     }
 
     setFilteredSubmissions(filtered);
-  }, [allSubmissions, dateFilter, domainFilter, templateFilter, activeTab]);
+  }, [allSubmissions, dateFilter, domainFilter, templateFilter]);
 
   if (isLoading) {
     return (

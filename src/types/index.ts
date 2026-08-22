@@ -106,4 +106,9 @@ export interface Submission {
   location_lat: number | null;
   location_lng: number | null;
   device_info: string | null;
+  // Telecaller CRM fields
+  telecaller_id?: string | null;
+  lead_status?: string;
+  telecaller_remark?: string | null;
+  lead_status_updated_at?: string | null;
 }

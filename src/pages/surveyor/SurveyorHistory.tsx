@@ -20,7 +20,6 @@ export default function SurveyorHistory() {
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
 
   // Filters
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'reverted' | 'approved'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [domainFilter, setDomainFilter] = useState('all');
   const [templateFilter, setTemplateFilter] = useState('all');
@@ -68,14 +67,6 @@ export default function SurveyorHistory() {
   useEffect(() => {
     let filtered = [...allSubmissions];
 
-    if (activeTab === 'pending') {
-      filtered = filtered.filter(s => s.status === 'submitted');
-    } else if (activeTab === 'reverted') {
-      filtered = filtered.filter(s => s.status === 'reverted');
-    } else if (activeTab === 'approved') {
-      filtered = filtered.filter(s => s.status === 'approved' || s.status === 'reviewed');
-    }
-
     if (domainFilter !== 'all') {
       filtered = filtered.filter(s => s.domain_id === domainFilter);
     }
@@ -102,7 +93,7 @@ export default function SurveyorHistory() {
     }
 
     setFilteredSubmissions(filtered);
-  }, [allSubmissions, dateFilter, domainFilter, templateFilter, activeTab]);
+  }, [allSubmissions, dateFilter, domainFilter, templateFilter]);
 
   if (isLoading) {
     return (
@@ -148,33 +139,6 @@ export default function SurveyorHistory() {
           </div>
         </div>
 
-        <div className="flex gap-2 border-b border-bg-border pb-px mb-4">
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'all' ? 'border-accent-blue text-white' : 'border-transparent text-text-secondary hover:text-white'}`}
-          >
-            All Forms
-          </button>
-          <button
-            onClick={() => setActiveTab('pending')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'pending' ? 'border-accent-yellow text-white' : 'border-transparent text-text-secondary hover:text-white'}`}
-          >
-            Pending Approval
-          </button>
-          <button
-            onClick={() => setActiveTab('reverted')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'reverted' ? 'border-accent-red text-white' : 'border-transparent text-text-secondary hover:text-white'}`}
-          >
-            Reverted
-          </button>
-          <button
-            onClick={() => setActiveTab('approved')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'approved' ? 'border-accent-green text-white' : 'border-transparent text-text-secondary hover:text-white'}`}
-          >
-            Approved
-          </button>
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
           <Card className="flex items-center gap-4 bg-bg-secondary/50">
             <div className="p-3 rounded-lg bg-accent-blue/10">
@@ -205,11 +169,9 @@ export default function SurveyorHistory() {
                   <td className="py-3 px-5">
                     <Badge variant={
                       sub.status === 'submitted' ? 'blue' :
-                      sub.status === 'approved' ? 'green' : 
-                      sub.status === 'rejected' ? 'red' : 
-                      sub.status === 'reverted' ? 'yellow' : 'gray'
+sub.status === 'submitted' ? 'blue' : 'gray'
                     }>
-                      {sub.status === 'reverted' ? 'Reverted' : sub.status}
+{sub.status}
                     </Badge>
                   </td>
                   <td className="py-3 px-5 text-right">
@@ -243,23 +205,35 @@ export default function SurveyorHistory() {
                 <span className="text-text-secondary text-sm font-medium">{format(new Date(selectedSub.submitted_at), 'MMM dd, yyyy hh:mm a')}</span>
                 <Badge variant={
                   selectedSub.status === 'submitted' ? 'blue' : 
-                  selectedSub.status === 'approved' ? 'green' : 
-                  selectedSub.status === 'rejected' ? 'red' : 
-                  selectedSub.status === 'reverted' ? 'yellow' : 'gray'
+selectedSub.status === 'submitted' ? 'blue' : 'gray'
                 }>
-                  {selectedSub.status === 'reverted' ? 'Reverted' : selectedSub.status}
+{selectedSub.status}
                 </Badge>
               </div>
               <div className="space-y-4">
-                {selectedSub.data && Object.keys(selectedSub.data).length > 0 ? Object.entries(selectedSub.data).map(([key, value]) => {
-                  let label = key;
-                  if (selectedSub.form_templates?.fields) {
-                    const fieldConfig = selectedSub.form_templates.fields.find((f: any) => f.id === key);
-                    if (fieldConfig && fieldConfig.label) {
-                      label = fieldConfig.label;
-                    }
-                  }
+              {(() => {
+                if (!selectedSub.data || Object.keys(selectedSub.data).length === 0) {
+                  return <div className="text-text-muted italic text-sm text-center py-8">No data entries found.</div>;
+                }
 
+                let entriesToRender: {key: string, label: string, value: any}[] = [];
+                if (selectedSub.form_templates?.fields) {
+                   entriesToRender = selectedSub.form_templates.fields
+                     .filter((f: any) => selectedSub.data[f.id] !== undefined)
+                     .map((f: any) => ({
+                       key: f.id,
+                       label: f.label || f.id,
+                       value: selectedSub.data[f.id]
+                     }));
+                } else {
+                   entriesToRender = Object.entries(selectedSub.data).map(([k, v]) => ({
+                       key: k,
+                       label: k,
+                       value: v
+                   }));
+                }
+
+                return entriesToRender.map(({key, label, value}) => {
                   let displayValue = value as string;
                   if (typeof value === 'object' && value !== null) {
                     if ('lat' in value && 'lng' in value) {
@@ -291,9 +265,8 @@ export default function SurveyorHistory() {
                       )}
                     </div>
                   );
-                }) : (
-                  <div className="text-text-muted italic text-sm">No data entries found.</div>
-                )}
+                });
+              })()}
               </div>
               
               {selectedSub.admin_notes && (

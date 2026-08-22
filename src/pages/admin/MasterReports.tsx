@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Download, Calendar, Filter, Database, Users, Building2, Loader2, Info, X, MapPin, PieChart, FileText } from 'lucide-react';
+import { Download, Calendar, Filter, Database, Users, Building2, Loader2, Info, X, MapPin, PieChart, FileText, PhoneCall } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -14,16 +14,35 @@ interface SurveyorData {
   name: string;
   role: string;
   submissions: number;
-  approved: number;
-  reverted: number;
-  pending: number;
   lastActive: string;
 }
 
-interface TeamLeadData {
+interface TelecallerData {
+  id: string;
   name: string;
-  approvals: number;
-  reverts: number;
+  assigned: number;
+  newLeads: number;
+  immediate: number;
+  hot: number;
+  warm: number;
+  cold: number;
+  skipped: number;
+  wrongNumber: number;
+}
+
+interface TeamLeadData {
+  teamLeadName: string;
+  telecallerId: string;
+  telecallerName: string;
+  assigned: number;
+
+  newLeads: number;
+  immediate: number;
+  hot: number;
+  warm: number;
+  cold: number;
+  skipped: number;
+  wrongNumber: number;
 }
 
 export default function MasterReports() {
@@ -33,6 +52,7 @@ export default function MasterReports() {
   const [dataDomains, setDataDomains] = useState<{name: string, count: number}[]>([]);
   const [dataRoles, setDataRoles] = useState<{name: string, count: number}[]>([]);
   const [dataSurveyors, setDataSurveyors] = useState<SurveyorData[]>([]);
+  const [dataTelecallers, setDataTelecallers] = useState<TelecallerData[]>([]);
   const [dataTeamLeads, setDataTeamLeads] = useState<TeamLeadData[]>([]);
   const [masterDump, setMasterDump] = useState<any[]>([]);
   const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
@@ -70,11 +90,15 @@ export default function MasterReports() {
           status,
           submitted_at,
           domains(name),
-          surveyors(username, full_name, user_roles(name)),
+          surveyors!surveyor_id(username, full_name, user_roles(name)),
           data,
           form_templates(fields),
           reviewed_by,
-          admin_notes
+          admin_notes,
+          telecaller_id,
+          lead_status,
+          lead_status_updated_at,
+          surveyor_id
         `);
       
       if (subError) throw subError;
@@ -94,20 +118,38 @@ export default function MasterReports() {
       const domainMap: Record<string, number> = {};
       const roleMap: Record<string, number> = {};
       const survMap: Record<string, SurveyorData> = {};
+      const telecallerMap: Record<string, TelecallerData> = {};
       const teamLeadMap: Record<string, TeamLeadData> = {};
       const rawDump: any[] = [];
 
       const dynamicKeysSet = new Set<string>();
 
       const tlIdsToFetch = new Set<string>();
-      submissions.forEach(sub => {
-        if (sub.reviewed_by) tlIdsToFetch.add(sub.reviewed_by);
-      });
+      
+      const { data: allTeamLeads } = await supabase
+        .from('surveyors')
+        .select('id, full_name, assigned_users')
+        .not('assigned_users', 'is', null);
 
-      const tlNameMap = new Map<string, string>();
-      if (tlIdsToFetch.size > 0) {
-        const { data: tlData } = await supabase.from('surveyors').select('id, full_name').in('id', Array.from(tlIdsToFetch));
-        tlData?.forEach(tl => tlNameMap.set(tl.id, tl.full_name));
+      const surveyorToTlMap = new Map<string, {id: string, name: string}>();
+      if (allTeamLeads) {
+        allTeamLeads.forEach(tl => {
+          if (Array.isArray(tl.assigned_users)) {
+            tl.assigned_users.forEach((surveyorId: string) => {
+              surveyorToTlMap.set(surveyorId, { id: tl.id, name: tl.full_name });
+            });
+          }
+        });
+      }
+
+      const tcIdsToFetch = new Set<string>();
+      submissions.forEach(sub => {
+        if (sub.telecaller_id) tcIdsToFetch.add(sub.telecaller_id);
+      });
+      const tcNameMap = new Map<string, string>();
+      if (tcIdsToFetch.size > 0) {
+        const { data: tcData } = await supabase.from('surveyors').select('id, full_name').in('id', Array.from(tcIdsToFetch));
+        tcData?.forEach(tc => tcNameMap.set(tc.id, tc.full_name));
       }
 
       submissions.forEach(sub => {
@@ -120,25 +162,70 @@ export default function MasterReports() {
         roleMap[rName] = (roleMap[rName] || 0) + 1;
 
         if (!survMap[sName]) {
-          survMap[sName] = { name: sName, role: rName, submissions: 0, approved: 0, reverted: 0, pending: 0, lastActive: sub.submitted_at };
+          survMap[sName] = { name: sName, role: rName, submissions: 0, lastActive: sub.submitted_at };
         }
         survMap[sName].submissions += 1;
-        if (sub.status === 'approved') survMap[sName].approved += 1;
-        else if (sub.status === 'reverted') survMap[sName].reverted += 1;
-        else survMap[sName].pending += 1;
 
         if (new Date(sub.submitted_at) > new Date(survMap[sName].lastActive)) {
           survMap[sName].lastActive = sub.submitted_at;
         }
 
-        const tlName = sub.reviewed_by ? tlNameMap.get(sub.reviewed_by) || 'Unknown Team Lead' : null;
+        const tlName = sub.reviewed_by ? 'Team Lead' : null;
 
-        if (sub.reviewed_by && sub.status !== 'submitted') {
-          if (!teamLeadMap[sub.reviewed_by]) {
-            teamLeadMap[sub.reviewed_by] = { name: tlName!, approvals: 0, reverts: 0 };
+
+
+        if (sub.telecaller_id) {
+          // Telecaller stats
+          if (!telecallerMap[sub.telecaller_id]) {
+            telecallerMap[sub.telecaller_id] = {
+              id: sub.telecaller_id,
+              name: tcNameMap.get(sub.telecaller_id) || 'Unknown Telecaller',
+              assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0
+            };
           }
-          if (sub.status === 'approved') teamLeadMap[sub.reviewed_by].approvals += 1;
-          if (sub.status === 'reverted') teamLeadMap[sub.reviewed_by].reverts += 1;
+          const tMap = telecallerMap[sub.telecaller_id];
+          tMap.assigned += 1;
+          
+          let ls = sub.lead_status || 'new';
+          // Today check for skipped
+          const today = new Date();
+          today.setHours(0,0,0,0);
+          if (ls === 'skipped' && sub.lead_status_updated_at) {
+            if (new Date(sub.lead_status_updated_at) < today) ls = 'new';
+          }
+
+          if (ls === 'new') tMap.newLeads += 1;
+          else if (ls === 'immediate') tMap.immediate += 1;
+          else if (ls === 'hot') tMap.hot += 1;
+          else if (ls === 'warm') tMap.warm += 1;
+          else if (ls === 'cold') tMap.cold += 1;
+          else if (ls === 'skipped') tMap.skipped += 1;
+          else if (ls === 'wrong_number') tMap.wrongNumber += 1;
+          
+          // Team Lead -> Telecaller stats
+          const actualTl = sub.surveyor_id ? surveyorToTlMap.get(sub.surveyor_id) : null;
+          
+          if (actualTl) {
+            const tlKey = `${actualTl.id}_${sub.telecaller_id}`;
+            if (!teamLeadMap[tlKey]) {
+              teamLeadMap[tlKey] = {
+                teamLeadName: actualTl.name,
+                telecallerId: sub.telecaller_id,
+                telecallerName: tcNameMap.get(sub.telecaller_id) || 'Unknown Telecaller',
+                assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0
+              };
+            }
+            const tlMap = teamLeadMap[tlKey];
+            tlMap.assigned += 1;
+            
+            if (ls === 'new') tlMap.newLeads += 1;
+            else if (ls === 'immediate') tlMap.immediate += 1;
+            else if (ls === 'hot') tlMap.hot += 1;
+            else if (ls === 'warm') tlMap.warm += 1;
+            else if (ls === 'cold') tlMap.cold += 1;
+            else if (ls === 'skipped') tlMap.skipped += 1;
+            else if (ls === 'wrong_number') tlMap.wrongNumber += 1;
+          }
         }
 
         let rowData: any = {
@@ -192,7 +279,8 @@ export default function MasterReports() {
       setDataRoles(Object.entries(roleMap).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count));
       
       setDataSurveyors(Object.values(survMap).sort((a,b) => b.submissions - a.submissions));
-      setDataTeamLeads(Object.values(teamLeadMap).sort((a,b) => (b.approvals + b.reverts) - (a.approvals + a.reverts)));
+      setDataTelecallers(Object.values(telecallerMap).sort((a,b) => b.assigned - a.assigned));
+      setDataTeamLeads(Object.values(teamLeadMap).sort((a,b) => b.assigned - a.assigned));
       
       setMasterDump(rawDump.sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime()));
 
@@ -215,11 +303,33 @@ export default function MasterReports() {
       dataToExport = dataRoles.map(d => ({ Role: d.name, Submissions: d.count }));
       sheetName = 'By Role';
     } else if (activeTab === 'person') {
-      dataToExport = dataSurveyors.map(d => ({ Surveyor: d.name, Role: d.role, Submissions: d.submissions, Approved: d.approved, Reverted: d.reverted, Pending: d.pending }));
+      dataToExport = dataSurveyors.map(d => ({ Surveyor: d.name, Role: d.role, Submissions: d.submissions }));
       sheetName = 'By Surveyor';
     } else if (activeTab === 'teamlead') {
-      dataToExport = dataTeamLeads.map(d => ({ 'Team Lead': d.name, Approvals: d.approvals, Reverts: d.reverts }));
+      dataToExport = dataTeamLeads.map(d => ({
+        'Team Lead': d.teamLeadName,
+        'Telecaller': d.telecallerName,
+        'Total Assigned': d.assigned,
+        'New': d.newLeads,
+        'Cold': d.cold,
+        'Warm': d.warm,
+        'Hot': d.hot,
+        'Immediate': d.immediate,
+        'Skipped/No Connect': d.skipped + d.wrongNumber
+      }));
       sheetName = 'By Team Lead';
+    } else if (activeTab === 'telecaller') {
+      dataToExport = dataTelecallers.map(d => ({
+        'Telecaller': d.name,
+        'Total Assigned': d.assigned,
+        'New': d.newLeads,
+        'Cold': d.cold,
+        'Warm': d.warm,
+        'Hot': d.hot,
+        'Immediate': d.immediate,
+        'Skipped/No Connect': d.skipped + d.wrongNumber
+      }));
+      sheetName = 'By Telecaller';
     } else {
       dataToExport = masterDump.map(({ _raw, ...rest }) => rest);
       sheetName = 'Master Dump';
@@ -273,6 +383,7 @@ export default function MasterReports() {
     { id: 'role', label: 'By Role', icon: Users },
     { id: 'person', label: 'By Surveyor', icon: Filter },
     { id: 'teamlead', label: 'By Team Lead', icon: Building2 },
+    { id: 'telecaller', label: 'By Telecaller', icon: PhoneCall },
     { id: 'master', label: 'Master Dump', icon: Database },
   ];
 
@@ -368,34 +479,121 @@ export default function MasterReports() {
                     <td colSpan={9} className="py-8 text-center text-text-muted italic">No submissions recorded yet.</td>
                   </tr>
                 ) : (
-                  masterDump.map((d, i) => (
-                    <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 cursor-pointer" onClick={() => setSelectedSub(d._raw)}>
-                      <td className="py-3 px-4 text-white font-mono text-xs">{d.ID}</td>
-                      <td className="py-3 px-4 text-text-secondary text-xs">{d.Date}</td>
-                      <td className="py-3 px-4 text-text-secondary">{d.Role}</td>
-                      <td className="py-3 px-4 text-white font-medium">{d.Surveyor}</td>
-                      <td className="py-3 px-4 text-text-secondary">{d.Domain}</td>
-                      <td className="py-3 px-4 text-text-secondary">
-                        <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold tracking-wider ${
-                          d.Status === 'approved' ? 'bg-accent-green/20 text-accent-green' :
-                          d.Status === 'reverted' ? 'bg-accent-yellow/20 text-accent-yellow' :
-                          'bg-accent-blue/20 text-accent-blue'
-                        }`}>{d.Status}</span>
+                  masterDump.map((sub, i) => (
+                    <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => setSelectedSub(sub._raw)}>
+                      <td className="py-3 px-4 text-white font-medium">{sub.ID}</td>
+                      <td className="py-3 px-4 text-text-secondary">{sub.Date}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-1 rounded bg-bg-primary text-[10px] text-text-secondary border border-bg-border uppercase tracking-wider">{sub.Role}</span>
                       </td>
-                      <td className="py-3 px-4 text-text-secondary">{d['Reviewed By']}</td>
-                      <td className="py-3 px-4 text-text-secondary max-w-[200px] truncate" title={d.Remarks}>{d.Remarks}</td>
+                      <td className="py-3 px-4 text-white">{sub.Surveyor}</td>
+                      <td className="py-3 px-4 text-text-secondary">{sub.Domain}</td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          sub.Status === 'approved' ? 'bg-accent-green/10 text-accent-green' :
+                          sub.Status === 'rejected' ? 'bg-accent-red/10 text-accent-red' :
+                          'bg-accent-yellow/10 text-accent-yellow'
+                        }`}>
+                          {sub.Status === 'approved' && <CheckCircle className="w-3 h-3 mr-1" />}
+                          {sub.Status === 'rejected' && <XCircle className="w-3 h-3 mr-1" />}
+                          {sub.Status === 'pending' && <Clock className="w-3 h-3 mr-1" />}
+                          {sub.Status === 'reviewed' && <FileText className="w-3 h-3 mr-1" />}
+                          {sub.Status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-text-secondary">{sub['Reviewed By']}</td>
+                      <td className="py-3 px-4 text-text-muted max-w-[200px] truncate">{sub.Remarks}</td>
                       <td className="py-3 px-4 text-right">
-                        <div className="flex justify-end gap-2 items-center">
-                          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setSelectedSub(d._raw); }}>
-                            View Form
-                          </Button>
-                          <Button size="sm" className="bg-accent-red hover:bg-accent-red/90 text-white border-transparent shadow-lg shadow-accent-red/20 px-4" onClick={(e) => handleDeleteSubmission(d._raw.id, e)}>
-                            Delete
-                          </Button>
-                        </div>
+                        <Button 
+                          variant="danger" 
+                          size="sm"
+                          onClick={(e) => handleDeleteSubmission(sub._raw.id, e)}
+                        >
+                          Delete
+                        </Button>
                       </td>
                     </tr>
                   ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : activeTab === 'teamlead' ? (
+        <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
+          <div className="p-5 border-b border-bg-border">
+            <h3 className="text-sm font-semibold text-white">Team Lead Assignments Report</h3>
+            <p className="text-xs text-text-muted mt-1">Review how many leads were assigned by Team Leads to specific Telecallers.</p>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest">
+                  <th className="py-3 px-4 font-semibold">Team Lead</th>
+                  <th className="py-3 px-4 font-semibold">Assigned Telecaller</th>
+                  <th className="py-3 px-4 font-semibold text-center">Total Assigned</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">New</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Cold</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-yellow">Warm</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Hot</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
+                  <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped/No Connect</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataTeamLeads.length > 0 ? dataTeamLeads.map((d, i) => (
+                  <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors">
+                    <td className="py-3 px-4 text-white font-medium">{d.teamLeadName}</td>
+                    <td className="py-3 px-4 text-text-secondary">{d.telecallerName}</td>
+                    <td className="py-3 px-4 text-center font-bold text-white">{d.assigned.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center text-accent-green font-medium">{d.newLeads}</td>
+                    <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.cold}</td>
+                    <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
+                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
+                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.immediate}</td>
+                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped + d.wrongNumber}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={9} className="py-8 text-center text-text-muted">No assignment data available.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : activeTab === 'telecaller' ? (
+        <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
+          <div className="p-5 border-b border-bg-border">
+            <h3 className="text-sm font-semibold text-white">Telecaller Performance Report</h3>
+            <p className="text-xs text-text-muted mt-1">Review overall lead conversion and handling metrics per telecaller.</p>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest">
+                  <th className="py-3 px-4 font-semibold">Telecaller</th>
+                  <th className="py-3 px-4 font-semibold text-center">Total Assigned</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">New</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Cold</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-yellow">Warm</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Hot</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
+                  <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped/No Connect</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataTelecallers.length > 0 ? dataTelecallers.map((d, i) => (
+                  <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => navigate(`/admin/telecaller/${d.id}`)}>
+                    <td className="py-3 px-4 text-white font-medium">{d.name}</td>
+                    <td className="py-3 px-4 text-center font-bold text-white">{d.assigned.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center text-accent-green font-medium">{d.newLeads}</td>
+                    <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.cold}</td>
+                    <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
+                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
+                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.immediate}</td>
+                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped + d.wrongNumber}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={8} className="py-8 text-center text-text-muted">No telecaller data available.</td></tr>
                 )}
               </tbody>
             </table>
@@ -439,24 +637,7 @@ export default function MasterReports() {
                     cursor={{ fill: '#1e2235' }}
                   />
                   <Legend />
-                  <Bar dataKey="approved" stackId="a" fill="#22c55e" name="Approved" />
-                  <Bar dataKey="pending" stackId="a" fill="#4f6ef7" name="Pending" />
-                  <Bar dataKey="reverted" stackId="a" fill="#eab308" name="Reverted" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : activeTab === 'teamlead' ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dataTeamLeads} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#252840" horizontal={false} />
-                  <XAxis type="number" stroke="#64748b" fontSize={12} />
-                  <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={12} width={100} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#1a1d2e', borderColor: '#252840', color: '#fff', borderRadius: '8px' }}
-                    cursor={{ fill: '#1e2235' }}
-                  />
-                  <Legend />
-                  <Bar dataKey="approvals" fill="#22c55e" name="Approved" />
-                  <Bar dataKey="reverts" fill="#eab308" name="Reverted" />
+                  <Bar dataKey="submissions" fill="#4f6ef7" name="Total Submissions" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : null}
@@ -500,29 +681,13 @@ export default function MasterReports() {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="font-mono text-white mb-1">{d.submissions}</div>
-                      <div className="flex justify-end gap-1 text-[10px]">
-                         <span className="text-accent-green" title="Approved">{d.approved}</span>/
-                         <span className="text-accent-yellow" title="Reverted">{d.reverted}</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!isLoading && activeTab === 'teamlead' && dataTeamLeads.map((d, i) => (
-                  <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50">
-                    <td className="py-3 px-4 text-white font-medium">{d.name}</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex flex-col items-end gap-1 text-[11px] font-mono">
-                         <span className="text-accent-green bg-accent-green/10 px-2 rounded w-full text-right">{d.approvals} A</span>
-                         <span className="text-accent-yellow bg-accent-yellow/10 px-2 rounded w-full text-right">{d.reverts} REV</span>
-                      </div>
                     </td>
                   </tr>
                 ))}
                 {!isLoading && activeTab !== 'master' && 
                  ((activeTab === 'domain' && dataDomains.length === 0) ||
                   (activeTab === 'role' && dataRoles.length === 0) ||
-                  (activeTab === 'person' && dataSurveyors.length === 0) ||
-                  (activeTab === 'teamlead' && dataTeamLeads.length === 0)) && (
+                  (activeTab === 'person' && dataSurveyors.length === 0)) && (
                   <tr>
                     <td colSpan={2} className="py-8 text-center text-text-muted italic">No data available.</td>
                   </tr>
@@ -571,53 +736,62 @@ export default function MasterReports() {
             <div className="text-xs text-text-muted uppercase tracking-widest border-b border-bg-border pb-2">Submitted Data</div>
             
             <div className="space-y-4">
-              {selectedSub.data && Object.keys(selectedSub.data).length > 0 ? Object.entries(selectedSub.data).map(([key, value]) => {
-                let label = key;
+              {(() => {
+                if (!selectedSub.data || Object.keys(selectedSub.data).length === 0) {
+                  return <div className="text-text-muted italic text-sm">No data entries found.</div>;
+                }
+
+                let entriesToRender: {key: string, label: string, value: any}[] = [];
                 if (selectedSub.form_templates?.fields) {
-                  const templates = selectedSub.form_templates;
-                  const fieldsData = Array.isArray(templates) ? templates[0]?.fields : templates?.fields;
-                  if (fieldsData) {
-                    const fieldConfig = fieldsData.find((f: any) => f.id === key);
-                    if (fieldConfig && fieldConfig.label) {
-                      label = fieldConfig.label;
+                   entriesToRender = (Array.isArray(selectedSub.form_templates) ? selectedSub.form_templates[0]?.fields : selectedSub.form_templates.fields)
+                     .filter((f: any) => selectedSub.data[f.id] !== undefined)
+                     .map((f: any) => ({
+                       key: f.id,
+                       label: f.label || f.id,
+                       value: selectedSub.data[f.id]
+                     }));
+                } else {
+                   entriesToRender = Object.entries(selectedSub.data).map(([k, v]) => ({
+                       key: k,
+                       label: k,
+                       value: v
+                   }));
+                }
+
+                return entriesToRender.map(({key, label, value}) => {
+                  let displayValue = value as string;
+                  if (typeof value === 'object' && value !== null) {
+                    if ('lat' in value && 'lng' in value) {
+                       displayValue = `Lat: ${(value as any).lat}, Lng: ${(value as any).lng}`;
+                    } else if (Array.isArray(value)) {
+                       displayValue = value.join(', ');
+                    } else {
+                       displayValue = JSON.stringify(value);
                     }
                   }
-                }
 
-                let displayValue = value as string;
-                if (typeof value === 'object' && value !== null) {
-                  if ('lat' in value && 'lng' in value) {
-                     displayValue = `Lat: ${(value as any).lat}, Lng: ${(value as any).lng}`;
-                  } else if (Array.isArray(value)) {
-                     displayValue = value.join(', ');
-                  } else {
-                     displayValue = JSON.stringify(value);
-                  }
-                }
-
-                return (
-                  <div key={key} className="bg-bg-primary rounded-lg border border-bg-border p-3">
-                    <span className="block text-[10px] uppercase text-text-secondary mb-1 font-semibold">{label}</span>
-                    {typeof displayValue === 'string' && displayValue.startsWith('http') && displayValue.includes('supabase.co/storage/v1/object/public/') ? (
-                      <div className="mt-1">
-                        {displayValue.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                          <a href={displayValue} target="_blank" rel="noreferrer" className="block">
-                            <img src={displayValue} alt={key} className="max-h-32 rounded border border-bg-border object-contain bg-white" />
-                          </a>
-                        ) : (
-                          <a href={displayValue} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline text-sm break-all">
-                            View Uploaded File
-                          </a>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-sm text-white break-words">{displayValue}</span>
-                    )}
-                  </div>
-                );
-              }) : (
-                <div className="text-text-muted italic text-sm">No data entries found.</div>
-              )}
+                  return (
+                    <div key={key} className="bg-bg-primary rounded-lg border border-bg-border p-3">
+                      <span className="block text-[10px] uppercase text-text-secondary mb-1 font-semibold">{label}</span>
+                      {typeof displayValue === 'string' && displayValue.startsWith('http') && displayValue.includes('supabase.co/storage/v1/object/public/') ? (
+                        <div className="mt-1">
+                          {displayValue.match(/\.(jpeg|jpg|gif|png)$/i) ? (
+                            <a href={displayValue} target="_blank" rel="noreferrer" className="block">
+                              <img src={displayValue} alt={key} className="max-h-32 rounded border border-bg-border object-contain bg-white" />
+                            </a>
+                          ) : (
+                            <a href={displayValue} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline text-sm break-all">
+                              View Uploaded File
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-white break-words">{displayValue}</span>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
             {selectedSub.admin_notes && (

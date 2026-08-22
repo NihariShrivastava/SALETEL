@@ -169,7 +169,11 @@ export default function SurveyorManagement() {
     if (editingId === id) resetForm();
 
     try {
-      // First, delete any submissions associated with this user to prevent foreign key errors
+      // Clear foreign key references to prevent constraint errors when deleting a telecaller or team lead
+      await supabase.from('submissions').update({ telecaller_id: null }).eq('telecaller_id', id);
+      await supabase.from('submissions').update({ reviewed_by: null }).eq('reviewed_by', id);
+
+      // Delete any submissions created by this user
       await supabase.from('submissions').delete().eq('surveyor_id', id);
       
       const { error } = await supabase.from('surveyors').delete().eq('id', id);

@@ -21,7 +21,10 @@ import FillForm from './pages/surveyor/FillForm';
 import SharedDashboardLayout from './components/layout/SharedDashboardLayout';
 import CounterDashboard from './pages/counter/CounterDashboard';
 import TeamLeadDashboard from './pages/teamlead/TeamLeadDashboard';
+import TLCustomTemplateDashboard from './pages/teamlead/TLCustomTemplateDashboard';
 import TelecallerDashboard from './pages/telecaller/TelecallerDashboard';
+import TelecallerLeads from './pages/telecaller/TelecallerLeads';
+import TelecallerLeadsDashboard from './pages/teamlead/TelecallerLeadsDashboard';
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, role } = useAuth();
@@ -85,6 +88,11 @@ function App() {
             <CustomTemplateDashboard />
           </AdminRoute>
         } />
+        <Route path="/admin/telecaller/:telecallerId" element={
+          <AdminRoute>
+            <TelecallerLeadsDashboard />
+          </AdminRoute>
+        } />
 
         {/* Surveyor Routes */}
         <Route path="/surveyor" element={
@@ -117,6 +125,18 @@ function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<TeamLeadDashboard />} />
         </Route>
+        
+        {/* Full screen TL Routes */}
+        <Route path="/teamlead/analyze/:templateId" element={
+          <TeamLeadRoute>
+            <TLCustomTemplateDashboard />
+          </TeamLeadRoute>
+        } />
+        <Route path="/teamlead/telecaller/:telecallerId" element={
+          <TeamLeadRoute>
+            <TelecallerLeadsDashboard />
+          </TeamLeadRoute>
+        } />
 
         {/* Telecaller Routes */}
         <Route path="/telecaller" element={
@@ -126,6 +146,7 @@ function App() {
         }>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<TelecallerDashboard />} />
+          <Route path="leads/:status" element={<TelecallerLeads />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />

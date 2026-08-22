@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { ArrowLeft, Download, Loader2, PieChart as PieChartIcon, BarChart as BarChartIcon } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, PieChart as PieChartIcon, BarChart as BarChartIcon, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { FormTemplate, FieldConfig, Submission } from '../../types';
 import toast from 'react-hot-toast';
@@ -27,6 +28,13 @@ export default function CustomTemplateDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
+  const { user } = useAuth();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [telecallers, setTelecallers] = useState<any[]>([]);
+  const [selectedTelecaller, setSelectedTelecaller] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+
   useEffect(() => {
     if (templateId) {
       fetchData();
@@ -34,6 +42,12 @@ export default function CustomTemplateDashboard() {
   }, [templateId]);
 
   const fetchData = async () => {
+    if (!user?.assigned_users || user.assigned_users.length === 0) {
+      setSubmissions([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       // Fetch template
@@ -46,15 +60,26 @@ export default function CustomTemplateDashboard() {
       if (templateError) throw templateError;
       setTemplate(templateData);
 
-      // Fetch submissions
+      // Fetch submissions matching template and surveyor
       const { data: subData, error: subError } = await supabase
         .from('submissions')
         .select(`*, surveyors!surveyor_id(username, full_name)`)
         .eq('form_template_id', templateId)
+        .in('surveyor_id', user.assigned_users)
         .order('submitted_at', { ascending: false });
 
       if (subError) throw subError;
       setSubmissions(subData || []);
+      
+      if (user?.assigned_users && user.assigned_users.length > 0) {
+        const { data: tcData } = await supabase
+          .from('surveyors')
+          .select('id, full_name, username, user_roles(name)')
+          .in('id', user.assigned_users);
+          
+        const telecallers = tcData?.filter(tc => (tc.user_roles as any)?.name?.toLowerCase().includes('telecaller')) || [];
+        setTelecallers(telecallers);
+      }
       
     } catch (error: any) {
       console.error(error);
@@ -142,6 +167,30 @@ export default function CustomTemplateDashboard() {
     });
   }, [submissions, filters, surveyorFilter, dateRange]);
 
+  const handleTransfer = async () => {
+    if (!selectedTelecaller || selectedIds.size === 0) return;
+    setIsTransferring(true);
+    try {
+      const { error } = await supabase
+        .from('submissions')
+        .update({ telecaller_id: selectedTelecaller })
+        .in('id', Array.from(selectedIds));
+
+      if (error) throw error;
+
+      toast.success(`Successfully transferred ${selectedIds.size} leads!`);
+      setSelectedIds(new Set());
+      setIsModalOpen(false);
+      setSelectedTelecaller('');
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to transfer leads');
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
   const handleExportExcel = () => {
     if (!template || filteredSubmissions.length === 0) {
       toast.error('No data to export');
@@ -207,6 +256,11 @@ export default function CustomTemplateDashboard() {
             <Download className="w-4 h-4 mr-2" />
             Export Data
           </Button>
+          {selectedIds.size > 0 && (
+            <Button onClick={() => setIsModalOpen(true)} className="bg-accent-blue hover:bg-accent-blue/90 text-white shadow-lg shadow-accent-blue/20">
+              Transfer {selectedIds.size} Leads
+            </Button>
+          )}
         </div>
       </div>
 
@@ -413,12 +467,29 @@ export default function CustomTemplateDashboard() {
                 <table className="w-full text-left border-collapse whitespace-nowrap text-sm min-w-[800px]">
                   <thead className="bg-bg-secondary border-b border-bg-border sticky top-0 z-10">
                     <tr className="text-text-muted text-[10px] uppercase tracking-widest">
+                      <th className="py-3 px-4 font-semibold w-10">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-bg-border bg-bg-primary text-accent-blue focus:ring-accent-blue"
+                          checked={paginatedSubmissions.length > 0 && paginatedSubmissions.every(s => selectedIds.has(s.id))}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedIds);
+                            if (e.target.checked) {
+                              paginatedSubmissions.forEach(s => newSet.add(s.id));
+                            } else {
+                              paginatedSubmissions.forEach(s => newSet.delete(s.id));
+                            }
+                            setSelectedIds(newSet);
+                          }}
+                        />
+                      </th>
                       <th className="py-3 px-4 font-semibold">Date</th>
                       <th className="py-3 px-4 font-semibold">Surveyor</th>
                       {template.fields.map(f => (
                         <th key={f.id} className="py-3 px-4 font-semibold max-w-[150px] truncate" title={f.label}>{f.label}</th>
                       ))}
                       <th className="py-3 px-4 font-semibold">Status</th>
+                      <th className="py-3 px-4 font-semibold">Telecaller</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -429,6 +500,20 @@ export default function CustomTemplateDashboard() {
                     ) : (
                       paginatedSubmissions.map(sub => (
                         <tr key={sub.id} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50">
+                          
+                          <td className="py-3 px-4">
+                            <input 
+                              type="checkbox" 
+                              className="rounded border-bg-border bg-bg-primary text-accent-blue focus:ring-accent-blue"
+                              checked={selectedIds.has(sub.id)}
+                              onChange={(e) => {
+                                const newSet = new Set(selectedIds);
+                                if (e.target.checked) newSet.add(sub.id);
+                                else newSet.delete(sub.id);
+                                setSelectedIds(newSet);
+                              }}
+                            />
+                          </td>
                           <td className="py-3 px-4 text-text-secondary text-xs">{new Date(sub.submitted_at).toLocaleString()}</td>
                           <td className="py-3 px-4 text-white font-medium">{(sub as any).surveyors?.full_name || (sub as any).surveyors?.username}</td>
                           {template.fields.map(f => {
@@ -449,6 +534,9 @@ export default function CustomTemplateDashboard() {
                               sub.status === 'reverted' ? 'bg-accent-yellow/20 text-accent-yellow' :
                               'bg-accent-blue/20 text-accent-blue'
                             }`}>{sub.status}</span>
+                          </td>
+                          <td className="py-3 px-4 text-text-secondary text-xs">
+                            {sub.telecaller_id ? (telecallers.find(t => t.id === sub.telecaller_id)?.full_name || 'Assigned') : '-'}
                           </td>
                         </tr>
                       ))
@@ -490,6 +578,45 @@ export default function CustomTemplateDashboard() {
         </div>
       ) : (
         <div className="text-center py-20 text-text-muted">Template not found.</div>
+      )}
+
+      {/* Transfer Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <Card className="w-full max-w-md bg-bg-secondary p-0 overflow-hidden">
+            <div className="p-4 border-b border-bg-border flex justify-between items-center bg-bg-primary">
+              <h3 className="font-bold text-white text-lg">Transfer {selectedIds.size} Leads</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-text-muted hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1">Select Telecaller</label>
+                <select 
+                  value={selectedTelecaller}
+                  onChange={e => setSelectedTelecaller(e.target.value)}
+                  className="w-full bg-bg-primary border border-bg-border rounded-lg px-4 py-2 text-white text-sm focus:border-accent-blue focus:outline-none"
+                >
+                  <option value="">-- Select Telecaller --</option>
+                  {telecallers.map(tc => (
+                    <option key={tc.id} value={tc.id}>{tc.full_name || tc.username}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-bg-border mt-4">
+                <Button variant="outline" onClick={() => setIsModalOpen(false)} className="border-bg-border text-text-secondary">Cancel</Button>
+                <Button 
+                  onClick={handleTransfer} 
+                  disabled={!selectedTelecaller || isTransferring}
+                  className="bg-accent-blue hover:bg-accent-blue/90 text-white"
+                >
+                  {isTransferring ? 'Transferring...' : 'Transfer Leads'}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );
