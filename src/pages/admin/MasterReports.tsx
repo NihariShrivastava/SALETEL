@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Download, Calendar, Filter, Database, Users, Building2, Loader2, Info, X, MapPin, PieChart, FileText, PhoneCall } from 'lucide-react';
+import { Download, Calendar, Filter, Database, Users, Building2, Loader2, Info, X, MapPin, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
