@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { FileText, CheckCircle, XCircle, Clock, Loader2, X, Users, PhoneCall, Activity, Flame } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Clock, Loader2, X, Users, PhoneCall, Activity, Flame, PhoneOff } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
@@ -116,6 +116,37 @@ export default function TeamLeadDashboard() {
   const telecallerData = Object.values(telecallerReport);
   const immediateLeads = submissions.filter(s => s.lead_status === 'immediate');
 
+  const handleCloseLead = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('submissions')
+        .update({ lead_status: 'closed' }) // "pending for close by admin" conceptually, but keeping it simple as 'closed' per our prior discussion.
+        .eq('id', id);
+      if (error) throw error;
+      toast.success('Lead closed successfully');
+      fetchSubmissions();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to close lead');
+    }
+  };
+
+  const handleDeleteLead = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this reverted lead?')) return;
+    try {
+      const { error } = await supabase
+        .from('submissions')
+        .update({ lead_status: 'deleted' })
+        .eq('id', id);
+      if (error) throw error;
+      toast.success('Lead deleted successfully');
+      fetchSubmissions();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete lead');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {immediateLeads.length > 0 && (
@@ -166,8 +197,7 @@ export default function TeamLeadDashboard() {
         </div>
       </div>
       
-
-        <Card className="p-6">
+      <Card className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-white">Forms Available for Lead Analysis</h3>
           </div>
@@ -195,6 +225,107 @@ export default function TeamLeadDashboard() {
             )}
           </div>
         </Card>
+
+      {/* Action Center for Immediate & Reverted Leads & Wrong Numbers */}
+      {(immediateLeads.length > 0 || submissions.some(s => s.lead_status === 'reverted_to_tl') || submissions.some(s => s.lead_status === 'wrong_number')) && (
+        <Card className="p-6 border-accent-blue/30 shadow-[0_0_15px_rgba(79,110,247,0.1)]">
+          <h3 className="text-lg font-bold text-white mb-4">Action Center</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Immediate Leads */}
+            <div className="bg-bg-primary border border-bg-border rounded-xl p-4">
+              <h4 className="font-bold text-accent-red mb-3 flex items-center gap-2">
+                <Flame className="w-4 h-4" /> Immediate Leads ({immediateLeads.length})
+              </h4>
+              <div className="space-y-3">
+                {immediateLeads.slice(0, 5).map(lead => (
+                  <div key={lead.id} className="bg-bg-secondary p-3 rounded-lg border border-bg-border flex flex-col gap-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm text-white font-medium">TC: {lead.telecaller?.full_name || 'Unassigned'}</p>
+                        <p className="text-xs text-text-muted">By: {lead.surveyor?.full_name || lead.surveyor?.username}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10 flex-1">
+                        View Form
+                      </Button>
+                      <Button size="sm" onClick={() => handleCloseLead(lead.id)} className="bg-accent-blue text-white hover:bg-blue-600 border-none flex-1">
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {immediateLeads.length === 0 && <p className="text-xs text-text-muted italic">No immediate leads.</p>}
+                {immediateLeads.length > 5 && <p className="text-xs text-accent-blue font-medium mt-2 cursor-pointer text-center">+ {immediateLeads.length - 5} more</p>}
+              </div>
+            </div>
+
+            {/* Reverted Leads */}
+            <div className="bg-bg-primary border border-bg-border rounded-xl p-4">
+              <h4 className="font-bold text-purple-500 mb-3 flex items-center gap-2">
+                <XCircle className="w-4 h-4" /> Reverted by TC
+              </h4>
+              <div className="space-y-3">
+                {submissions.filter(s => s.lead_status === 'reverted_to_tl').slice(0, 5).map(lead => (
+                  <div key={lead.id} className="bg-bg-secondary p-3 rounded-lg border border-bg-border flex flex-col gap-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm text-white font-medium">TC: {lead.telecaller?.full_name || 'Unassigned'}</p>
+                        <p className="text-xs text-text-muted truncate max-w-[150px]" title={lead.telecaller_remark}>
+                          {lead.telecaller_remark || 'No remark provided'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10 flex-1">
+                        View Form
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleDeleteLead(lead.id)} className="text-red-500 border-red-500/30 hover:bg-red-500/10 flex-1">
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {submissions.filter(s => s.lead_status === 'reverted_to_tl').length === 0 && <p className="text-xs text-text-muted italic">No reverted leads.</p>}
+                {submissions.filter(s => s.lead_status === 'reverted_to_tl').length > 5 && <p className="text-xs text-accent-blue font-medium mt-2 cursor-pointer text-center">+ {submissions.filter(s => s.lead_status === 'reverted_to_tl').length - 5} more</p>}
+              </div>
+            </div>
+
+            {/* Wrong Number Leads */}
+            <div className="bg-bg-primary border border-bg-border rounded-xl p-4">
+              <h4 className="font-bold text-slate-400 mb-3 flex items-center gap-2">
+                <PhoneOff className="w-4 h-4" /> Wrong Numbers
+              </h4>
+              <div className="space-y-3">
+                {submissions.filter(s => s.lead_status === 'wrong_number').slice(0, 5).map(lead => (
+                  <div key={lead.id} className="bg-bg-secondary p-3 rounded-lg border border-bg-border flex flex-col gap-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm text-white font-medium">TC: {lead.telecaller?.full_name || 'Unassigned'}</p>
+                        <p className="text-xs text-text-muted truncate max-w-[150px]" title={lead.telecaller_remark}>
+                          {lead.telecaller_remark || 'No remark provided'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10 flex-1">
+                        View Form
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleDeleteLead(lead.id)} className="text-red-500 border-red-500/30 hover:bg-red-500/10 flex-1">
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {submissions.filter(s => s.lead_status === 'wrong_number').length === 0 && <p className="text-xs text-text-muted italic">No wrong numbers.</p>}
+                {submissions.filter(s => s.lead_status === 'wrong_number').length > 5 && <p className="text-xs text-accent-blue font-medium mt-2 cursor-pointer text-center">+ {submissions.filter(s => s.lead_status === 'wrong_number').length - 5} more</p>}
+              </div>
+            </div>
+
+          </div>
+        </Card>
+      )}
 
         {/* Telecaller Performance Report */}
         <Card className="p-6">

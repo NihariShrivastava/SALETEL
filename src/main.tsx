@@ -6,6 +6,20 @@ import { AuthProvider } from './contexts/AuthContext.tsx'
 import { AppProvider } from './contexts/AppContext.tsx'
 import { Toaster } from 'react-hot-toast'
 
+window.addEventListener('error', (event) => {
+  fetch('http://localhost:3001/', {
+    method: 'POST',
+    body: JSON.stringify({ message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno, error: event.error?.stack })
+  }).catch(() => {});
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  fetch('http://localhost:3001/', {
+    method: 'POST',
+    body: JSON.stringify({ message: 'Unhandled Rejection', reason: event.reason?.stack || event.reason })
+  }).catch(() => {});
+});
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthProvider>

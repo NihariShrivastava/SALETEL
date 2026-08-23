@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, IndianRupee, History, Users, FileText, UserCog, Building2, FileBarChart } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, IndianRupee, History, Users, FileText, UserCog, Building2, FileBarChart, Settings } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 interface SidebarProps {
@@ -18,6 +18,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { to: '/admin/domains', icon: Users, label: 'Domain Management' },
     { to: '/admin/counters', icon: CheckSquare, label: 'Counter Management' },
     { to: '/admin/surveyors', icon: UserCog, label: 'Role Management' },
+    { to: '/admin/settings', icon: Settings, label: 'Telecaller Lead Setting' },
     { to: '/admin/reports', icon: FileBarChart, label: 'Master Reports' },
   ];
 

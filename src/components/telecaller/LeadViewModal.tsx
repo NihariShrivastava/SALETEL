@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { X, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface LeadViewModalProps {
   lead: any;
@@ -12,6 +13,7 @@ interface LeadViewModalProps {
 }
 
 export default function LeadViewModal({ lead, onClose, onStatusUpdate }: LeadViewModalProps) {
+  const { user } = useAuth();
   const [remark, setRemark] = useState(lead.telecaller_remark || '');
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -28,6 +30,23 @@ export default function LeadViewModal({ lead, onClose, onStatusUpdate }: LeadVie
         .eq('id', lead.id);
 
       if (error) throw error;
+
+      // Log the call attempt in the background
+      const previousStatus = lead.lead_status || 'new';
+      
+      supabase.from('lead_call_logs').insert({
+        submission_id: lead.id,
+        telecaller_id: user?.id || lead.telecaller_id,
+        previous_status: previousStatus,
+        new_status: status,
+        remarks: remark
+      }).then(({ error: logError }) => {
+        if (logError) {
+          console.error('Failed to log call:', logError);
+          toast.error(`Call Log Error: ${logError.message}`);
+        }
+      });
+
       toast.success('Lead updated successfully');
       onStatusUpdate();
       onClose();

@@ -114,7 +114,7 @@ export default function TelecallerLeadsDashboard() {
       {/* Header */}
       <header className="h-16 bg-bg-secondary border-b border-bg-border flex items-center px-6 sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-4 w-full">
-          <Button variant="outline" size="sm" onClick={() => navigate('/teamlead/dashboard')} className="shrink-0">
+          <Button variant="outline" size="sm" onClick={() => navigate(-1)} className="shrink-0">
             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
           </Button>
           <div className="h-8 w-px bg-bg-border mx-2"></div>
@@ -223,6 +223,10 @@ export default function TelecallerLeadsDashboard() {
                       else if (status === 'immediate') { statusColor = 'red'; statusText = 'IMMEDIATE'; }
                       else if (status === 'skipped' || status === 'wrong_number') { statusColor = 'gray'; statusText = 'SKIPPED'; }
                       else if (status === 'new') { statusColor = 'green'; statusText = 'NEW'; }
+                      else if (status === 'reverted_to_tl') { statusColor = 'blue'; statusText = 'REVERTED TO TL'; }
+                      else if (status === 'closed') { statusColor = 'gray'; statusText = 'CLOSED'; }
+                      else if (status === 'deleted') { statusColor = 'gray'; statusText = 'DELETED'; }
+                      else { statusText = status.toUpperCase().replace(/_/g, ' '); statusColor = 'gray'; }
 
                       return (
                         <tr key={sub.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/50 transition-colors">

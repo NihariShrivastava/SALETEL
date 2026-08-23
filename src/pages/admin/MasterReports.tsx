@@ -45,6 +45,14 @@ interface TeamLeadData {
   wrongNumber: number;
 }
 
+interface CallLogData {
+  telecallerId: string;
+  telecallerName: string;
+  totalCalls: number;
+  byPreviousStatus: Record<string, number>;
+  byNewStatus: Record<string, number>;
+}
+
 export default function MasterReports() {
   const [activeTab, setActiveTab] = useState('domain');
   const [isLoading, setIsLoading] = useState(true);
@@ -54,12 +62,21 @@ export default function MasterReports() {
   const [dataSurveyors, setDataSurveyors] = useState<SurveyorData[]>([]);
   const [dataTelecallers, setDataTelecallers] = useState<TelecallerData[]>([]);
   const [dataTeamLeads, setDataTeamLeads] = useState<TeamLeadData[]>([]);
+  const [dataCallLogs, setDataCallLogs] = useState<CallLogData[]>([]);
+  const [rawCallLogs, setRawCallLogs] = useState<any[]>([]);
+  const [debugError, setDebugError] = useState<string>('none');
+  const [selectedTelecallerForCallLogs, setSelectedTelecallerForCallLogs] = useState<{ id: string, name: string } | null>(null);
   const [masterDump, setMasterDump] = useState<any[]>([]);
   const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  
+  // Master Dump Filters
+  const [filterDomain, setFilterDomain] = useState<string>('all');
+  const [filterFormStatus, setFilterFormStatus] = useState<string>('all');
+  const [filterLeadStatus, setFilterLeadStatus] = useState<string>('all');
   
   const navigate = useNavigate();
   
@@ -92,7 +109,7 @@ export default function MasterReports() {
           domains(name),
           surveyors!surveyor_id(username, full_name, user_roles(name)),
           data,
-          form_templates(fields),
+          form_templates(name, fields),
           reviewed_by,
           admin_notes,
           telecaller_id,
@@ -104,6 +121,20 @@ export default function MasterReports() {
       if (subError) throw subError;
 
       const submissions = subData || [];
+
+      // Fetch call logs
+      const { data: logsData, error: logsError } = await supabase
+        .from('lead_call_logs')
+        .select('*');
+        
+      if (logsError) {
+        console.warn('Could not fetch call logs:', logsError.message);
+        toast.error(`Logs Fetch Error: ${logsError.message}`);
+        setDebugError(logsError.message);
+      }
+      const callLogs = logsData || [];
+      toast.success(`Debug: fetched ${callLogs.length} call logs`);
+      setRawCallLogs(callLogs);
 
       const validCount = submissions.filter(s => s.status !== 'rejected').length;
       const dataHealth = submissions.length > 0 ? ((validCount / submissions.length) * 100) : 100;
@@ -151,6 +182,31 @@ export default function MasterReports() {
         const { data: tcData } = await supabase.from('surveyors').select('id, full_name').in('id', Array.from(tcIdsToFetch));
         tcData?.forEach(tc => tcNameMap.set(tc.id, tc.full_name));
       }
+
+      const callLogMap: Record<string, CallLogData> = {};
+      callLogs.forEach((log: any) => {
+        const tcId = log.telecaller_id;
+        const tcName = tcNameMap.get(tcId) || 'Unknown Telecaller';
+        
+        if (!callLogMap[tcId]) {
+          callLogMap[tcId] = {
+            telecallerId: tcId,
+            telecallerName: tcName,
+            totalCalls: 0,
+            byPreviousStatus: {},
+            byNewStatus: {}
+          };
+        }
+        
+        const clm = callLogMap[tcId];
+        clm.totalCalls += 1;
+        
+        const pStat = log.previous_status || 'unknown';
+        const nStat = log.new_status || 'unknown';
+        
+        clm.byPreviousStatus[pStat] = (clm.byPreviousStatus[pStat] || 0) + 1;
+        clm.byNewStatus[nStat] = (clm.byNewStatus[nStat] || 0) + 1;
+      });
 
       submissions.forEach(sub => {
         const dName = (sub.domains as any)?.name || 'Unassigned';
@@ -228,13 +284,20 @@ export default function MasterReports() {
           }
         }
 
+        let tName = 'Unknown';
+        if (sub.form_templates) {
+          tName = Array.isArray(sub.form_templates) ? (sub.form_templates[0] as any)?.name : (sub.form_templates as any)?.name;
+        }
+
         let rowData: any = {
           ID: sub.id.split('-')[0].toUpperCase(),
           Date: new Date(sub.submitted_at).toLocaleString(),
           Role: rName,
           Surveyor: sName,
           Domain: dName,
+          Template: tName || '-',
           Status: sub.status,
+          'Lead Status': sub.lead_status || 'new',
           'Reviewed By': tlName || '-',
           Remarks: sub.admin_notes || '-',
           _raw: sub
@@ -281,6 +344,7 @@ export default function MasterReports() {
       setDataSurveyors(Object.values(survMap).sort((a,b) => b.submissions - a.submissions));
       setDataTelecallers(Object.values(telecallerMap).sort((a,b) => b.assigned - a.assigned));
       setDataTeamLeads(Object.values(teamLeadMap).sort((a,b) => b.assigned - a.assigned));
+      setDataCallLogs(Object.values(callLogMap).sort((a,b) => b.totalCalls - a.totalCalls));
       
       setMasterDump(rawDump.sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime()));
 
@@ -384,6 +448,7 @@ export default function MasterReports() {
     { id: 'person', label: 'By Surveyor', icon: Filter },
     { id: 'teamlead', label: 'By Team Lead', icon: Building2 },
     { id: 'telecaller', label: 'By Telecaller', icon: PhoneCall },
+    { id: 'call_activity', label: 'Call Activity', icon: PhoneCall },
     { id: 'master', label: 'Master Dump', icon: Database },
   ];
 
@@ -449,13 +514,99 @@ export default function MasterReports() {
         </Card>
       </div>
 
-      {activeTab === 'master' ? (
+      {activeTab === 'call_activity' ? (
+        <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
+          <div className="p-5 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Telecaller Activity Analytics</h3>
+              <p className="text-xs text-text-muted mt-1">Review the actual call attempts made, broken down by the lead's prior status.</p>
+            </div>
+            <div className="bg-bg-primary border border-bg-border px-4 py-2 rounded-lg text-sm text-text-secondary">
+              Total Calls Logged: <span className="text-white font-bold">{dataCallLogs.reduce((acc, curr) => acc + curr.totalCalls, 0)}</span>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest">
+                  <th className="py-3 px-4 font-semibold">Telecaller</th>
+                  <th className="py-3 px-4 font-semibold text-center">Total Calls</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">Calls to New</th>
+                  <th className="py-3 px-4 font-semibold text-center text-blue-400">Calls to Cold</th>
+                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Calls to Warm</th>
+                  <th className="py-3 px-4 font-semibold text-center text-red-400">Calls to Hot</th>
+                  <th className="py-3 px-4 font-semibold text-center text-purple-400">Calls to Skipped</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataCallLogs.length === 0 ? (
+                  <tr><td colSpan={7} className="py-12 text-center text-text-muted italic">No call activity recorded yet. (Debug: rawCallLogs: {rawCallLogs.length}, Error: {debugError})</td></tr>
+                ) : (
+                  dataCallLogs.map((log, i) => (
+                    <tr key={i} className="border-b border-bg-border hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => setSelectedTelecallerForCallLogs({ id: log.telecallerId, name: log.telecallerName })}>
+                      <td className="py-3 px-4 font-medium text-white border-r border-bg-border/50">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-accent-blue/20 flex items-center justify-center text-[10px] text-accent-blue font-bold">
+                            {log.telecallerName.charAt(0).toUpperCase()}
+                          </div>
+                          {log.telecallerName}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center font-bold text-white bg-bg-primary/30 text-lg border-r border-bg-border/50">{log.totalCalls}</td>
+                      <td className="py-3 px-4 text-center text-accent-green font-medium">{log.byPreviousStatus['new'] || 0}</td>
+                      <td className="py-3 px-4 text-center text-blue-400 font-medium">{log.byPreviousStatus['cold'] || 0}</td>
+                      <td className="py-3 px-4 text-center text-orange-400 font-medium">{log.byPreviousStatus['warm'] || 0}</td>
+                      <td className="py-3 px-4 text-center text-red-400 font-medium">{log.byPreviousStatus['hot'] || 0}</td>
+                      <td className="py-3 px-4 text-center text-purple-400 font-medium">{log.byPreviousStatus['skipped'] || 0}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : activeTab === 'master' ? (
         <Card className="flex flex-col p-0 overflow-hidden">
-          <div className="p-5 border-b border-bg-border">
+          <div className="p-5 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h3 className="text-sm font-semibold text-white">Master Data Entries</h3>
+            
+            <div className="flex flex-wrap gap-3">
+              <select 
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={filterDomain}
+                onChange={(e) => setFilterDomain(e.target.value)}
+              >
+                <option value="all">All Domains</option>
+                {Array.from(new Set(masterDump.map(d => d.Domain))).sort().map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              
+              <select 
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={filterFormStatus}
+                onChange={(e) => setFilterFormStatus(e.target.value)}
+              >
+                <option value="all">All Form Status</option>
+                {Array.from(new Set(masterDump.map(d => d.Status))).sort().map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+
+              <select 
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={filterLeadStatus}
+                onChange={(e) => setFilterLeadStatus(e.target.value)}
+              >
+                <option value="all">All Lead Status</option>
+                {Array.from(new Set(masterDump.map(d => d['Lead Status']))).sort().map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse whitespace-nowrap text-sm min-w-[800px]">
+            <table className="w-full text-left border-collapse whitespace-nowrap text-sm min-w-[1000px]">
               <thead className="bg-bg-secondary border-b border-bg-border">
                 <tr className="text-text-muted text-[10px] uppercase tracking-widest">
                   <th className="py-3 px-4 font-semibold">ID</th>
@@ -463,7 +614,9 @@ export default function MasterReports() {
                   <th className="py-3 px-4 font-semibold">Role</th>
                   <th className="py-3 px-4 font-semibold">Surveyor</th>
                   <th className="py-3 px-4 font-semibold">Domain</th>
-                  <th className="py-3 px-4 font-semibold">Status</th>
+                  <th className="py-3 px-4 font-semibold">Template</th>
+                  <th className="py-3 px-4 font-semibold">Form Status</th>
+                  <th className="py-3 px-4 font-semibold">Lead Status</th>
                   <th className="py-3 px-4 font-semibold">Reviewed By</th>
                   <th className="py-3 px-4 font-semibold max-w-[200px]">Remarks</th>
                   <th className="py-3 px-4 font-semibold text-right">Action</th>
@@ -472,14 +625,29 @@ export default function MasterReports() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-text-muted italic">Loading data...</td>
+                    <td colSpan={11} className="py-8 text-center text-text-muted italic">Loading data...</td>
                   </tr>
                 ) : masterDump.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-text-muted italic">No submissions recorded yet.</td>
+                    <td colSpan={11} className="py-8 text-center text-text-muted italic">No submissions recorded yet.</td>
                   </tr>
                 ) : (
-                  masterDump.map((sub, i) => (
+                  (() => {
+                    const filteredDump = masterDump.filter(d => 
+                      (filterDomain === 'all' || d.Domain === filterDomain) &&
+                      (filterFormStatus === 'all' || d.Status === filterFormStatus) &&
+                      (filterLeadStatus === 'all' || d['Lead Status'] === filterLeadStatus)
+                    );
+                    
+                    if (filteredDump.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={11} className="py-8 text-center text-text-muted italic">No matching records found for the selected filters.</td>
+                        </tr>
+                      );
+                    }
+                    
+                    return filteredDump.map((sub, i) => (
                     <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => setSelectedSub(sub._raw)}>
                       <td className="py-3 px-4 text-white font-medium">{sub.ID}</td>
                       <td className="py-3 px-4 text-text-secondary">{sub.Date}</td>
@@ -488,6 +656,7 @@ export default function MasterReports() {
                       </td>
                       <td className="py-3 px-4 text-white">{sub.Surveyor}</td>
                       <td className="py-3 px-4 text-text-secondary">{sub.Domain}</td>
+                      <td className="py-3 px-4 text-accent-blue">{sub.Template}</td>
                       <td className="py-3 px-4">
                         <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
                           sub.Status === 'approved' ? 'bg-accent-green/10 text-accent-green' :
@@ -499,6 +668,19 @@ export default function MasterReports() {
                           {sub.Status === 'pending' && <Clock className="w-3 h-3 mr-1" />}
                           {sub.Status === 'reviewed' && <FileText className="w-3 h-3 mr-1" />}
                           {sub.Status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          sub['Lead Status'] === 'new' ? 'bg-bg-primary text-text-secondary border border-bg-border' :
+                          sub['Lead Status'] === 'cold' ? 'bg-accent-blue/10 text-accent-blue' :
+                          sub['Lead Status'] === 'warm' ? 'bg-accent-yellow/10 text-accent-yellow' :
+                          sub['Lead Status'] === 'hot' ? 'bg-accent-red/10 text-accent-red' :
+                          sub['Lead Status'] === 'skipped' ? 'bg-purple-500/10 text-purple-400' :
+                          sub['Lead Status'] === 'closed' ? 'bg-accent-green/10 text-accent-green' :
+                          'bg-bg-primary text-text-muted border border-bg-border'
+                        }`}>
+                          {sub['Lead Status']}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-text-secondary">{sub['Reviewed By']}</td>
@@ -518,7 +700,8 @@ export default function MasterReports() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                  ));
+                  })()
                 )}
               </tbody>
             </table>
@@ -819,56 +1002,49 @@ export default function MasterReports() {
         </div>
       )}
 
-      {/* Template Selector Modal */}
+      {/* Custom Template Selection Modal */}
       {showTemplateModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center p-6 border-b border-bg-border shrink-0">
-              <div>
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <PieChart className="w-5 h-5 text-accent-blue" />
-                  Select Form Template
-                </h3>
-                <p className="text-sm text-text-secondary mt-1">Choose a template to view its custom analytics dashboard.</p>
-              </div>
+          <div className="bg-bg-secondary w-full max-w-lg rounded-xl border border-bg-border shadow-2xl flex flex-col overflow-hidden">
+            <div className="p-5 border-b border-bg-border flex justify-between items-center bg-bg-primary shrink-0">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-accent-blue" />
+                Select Custom Dashboard
+              </h3>
               <button onClick={() => setShowTemplateModal(false)} className="text-text-muted hover:text-white p-2 rounded-full hover:bg-bg-secondary transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
               {isLoadingTemplates ? (
-                <div className="flex flex-col items-center justify-center py-12 text-text-muted">
-                  <Loader2 className="w-8 h-8 animate-spin text-accent-blue mb-4" />
-                  <p>Loading templates...</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 text-accent-blue animate-spin mb-4" />
+                  <p className="text-text-muted">Loading templates...</p>
                 </div>
               ) : templates.length === 0 ? (
-                <div className="text-center py-12 text-text-muted">
+                <div className="text-center py-8 text-text-muted italic border-2 border-dashed border-bg-border rounded-xl">
                   No active templates found.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-3">
                   {templates.map(t => (
                     <button
                       key={t.id}
-                      onClick={() => navigate(`/admin/reports/custom/${t.id}`)}
-                      className="flex flex-col text-left p-4 bg-bg-secondary border border-bg-border rounded-xl hover:border-accent-blue/50 hover:bg-bg-hover transition-all group"
+                      onClick={() => navigate(`/admin/custom-dashboard/${t.id}`)}
+                      className="w-full text-left bg-bg-primary border border-bg-border p-4 rounded-xl hover:border-accent-blue/50 transition-colors group flex justify-between items-center"
                     >
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 bg-bg-primary rounded-lg text-accent-blue group-hover:scale-110 transition-transform">
-                          <FileText className="w-5 h-5" />
-                        </div>
-                        <h4 className="font-semibold text-white truncate">{t.name}</h4>
+                      <div>
+                        <h4 className="font-bold text-white group-hover:text-accent-blue transition-colors">{t.name}</h4>
+                        <p className="text-xs text-text-secondary mt-1">{t.description || 'No description'}</p>
                       </div>
-                      <p className="text-xs text-text-secondary line-clamp-2">
-                        {t.description || 'No description provided.'}
-                      </p>
+                      <PieChart className="w-5 h-5 text-text-muted group-hover:text-accent-blue transition-colors" />
                     </button>
                   ))}
                 </div>
               )}
             </div>
-          </Card>
+          </div>
         </div>
       )}
     </div>

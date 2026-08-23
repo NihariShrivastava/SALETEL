@@ -12,6 +12,7 @@ import CounterManagement from './pages/admin/CounterManagement';
 import Submissions from './pages/admin/Submissions';
 import MasterReports from './pages/admin/MasterReports';
 import CustomTemplateDashboard from './pages/admin/CustomTemplateDashboard';
+import SystemSettings from './pages/admin/SystemSettings';
 
 import SurveyorLayout from './pages/surveyor/SurveyorLayout';
 import SurveyorDashboard from './pages/surveyor/SurveyorDashboard';
@@ -23,7 +24,6 @@ import CounterDashboard from './pages/counter/CounterDashboard';
 import TeamLeadDashboard from './pages/teamlead/TeamLeadDashboard';
 import TLCustomTemplateDashboard from './pages/teamlead/TLCustomTemplateDashboard';
 import TelecallerDashboard from './pages/telecaller/TelecallerDashboard';
-import TelecallerLeads from './pages/telecaller/TelecallerLeads';
 import TelecallerLeadsDashboard from './pages/teamlead/TelecallerLeadsDashboard';
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -75,6 +75,7 @@ function App() {
           <Route path="counters" element={<CounterManagement />} />
           <Route path="submissions" element={<Submissions />} />
           <Route path="reports" element={<MasterReports />} />
+          <Route path="settings" element={<SystemSettings />} />
         </Route>
         
         {/* Full screen Admin Routes */}
@@ -146,7 +147,6 @@ function App() {
         }>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<TelecallerDashboard />} />
-          <Route path="leads/:status" element={<TelecallerLeads />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />
