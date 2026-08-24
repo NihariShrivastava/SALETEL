@@ -7,6 +7,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
+import { startOfDay, endOfDay } from 'date-fns';
 
 const COLORS = ['#4f6ef7', '#22c55e', '#eab308', '#ef4444', '#06b6d4', '#f97316'];
 
@@ -94,6 +95,8 @@ export default function MasterReports() {
   };
   
   // Master Dump Filters
+  const [globalStartDate, setGlobalStartDate] = useState<string>('');
+  const [globalEndDate, setGlobalEndDate] = useState<string>('');
   const [filterDomain, setFilterDomain] = useState<string>('all');
   const [filterFormStatus, setFilterFormStatus] = useState<string>('all');
   const [filterLeadStatus, setFilterLeadStatus] = useState<string>('all');
@@ -109,7 +112,7 @@ export default function MasterReports() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [globalStartDate, globalEndDate]);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -120,7 +123,7 @@ export default function MasterReports() {
       const { count: survCount, error: survError } = await supabase.from('surveyors').select('*', { count: 'exact', head: true });
       if (survError) throw survError;
 
-      const { data: subData, error: subError } = await supabase
+      let subsQuery = supabase
         .from('submissions')
         .select(`
           id,
@@ -137,15 +140,33 @@ export default function MasterReports() {
           lead_status_updated_at,
           surveyor_id
         `);
+
+      if (globalStartDate) {
+        subsQuery = subsQuery.gte('submitted_at', startOfDay(new Date(globalStartDate)).toISOString());
+      }
+      if (globalEndDate) {
+        subsQuery = subsQuery.lte('submitted_at', endOfDay(new Date(globalEndDate)).toISOString());
+      }
+
+      const { data: subData, error: subError } = await subsQuery;
       
       if (subError) throw subError;
 
       const submissions = subData || [];
 
       // Fetch call logs
-      const { data: logsData, error: logsError } = await supabase
+      let logsQuery = supabase
         .from('lead_call_logs')
         .select('*');
+
+      if (globalStartDate) {
+        logsQuery = logsQuery.gte('created_at', startOfDay(new Date(globalStartDate)).toISOString());
+      }
+      if (globalEndDate) {
+        logsQuery = logsQuery.lte('created_at', endOfDay(new Date(globalEndDate)).toISOString());
+      }
+
+      const { data: logsData, error: logsError } = await logsQuery;
         
       if (logsError) {
         console.warn('Could not fetch call logs:', logsError.message);
@@ -520,7 +541,23 @@ export default function MasterReports() {
           <h2 className="text-2xl font-bold text-white tracking-tight">Master Reports Hub</h2>
           <p className="text-text-secondary text-sm mt-1">Analyze data collection performance across all vectors.</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-center gap-3 flex-wrap justify-end">
+          <div className="flex items-center gap-2 bg-bg-primary border border-bg-border rounded-lg px-2 py-1">
+            <span className="text-xs text-text-muted font-medium ml-1 uppercase tracking-widest">Date Range:</span>
+            <input 
+              type="date" 
+              className="bg-transparent border-none text-white text-sm focus:outline-none [color-scheme:dark]"
+              value={globalStartDate}
+              onChange={(e) => setGlobalStartDate(e.target.value)}
+            />
+            <span className="text-text-muted">-</span>
+            <input 
+              type="date" 
+              className="bg-transparent border-none text-white text-sm focus:outline-none [color-scheme:dark]"
+              value={globalEndDate}
+              onChange={(e) => setGlobalEndDate(e.target.value)}
+            />
+          </div>
           <Button onClick={handleOpenTemplateModal} className="bg-accent-blue hover:bg-accent-blue/90 text-white border-transparent shadow-lg shadow-accent-blue/20">
             <PieChart className="w-4 h-4 mr-2" />
             Analyze by Custom Dashboard
