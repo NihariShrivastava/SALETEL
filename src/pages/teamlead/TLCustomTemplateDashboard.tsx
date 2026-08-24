@@ -239,7 +239,7 @@ export default function CustomTemplateDashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/admin/reports')} className="text-text-muted hover:text-white">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/teamlead/dashboard')} className="text-text-muted hover:text-white">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>

@@ -133,7 +133,6 @@ export default function MasterReports() {
         setDebugError(logsError.message);
       }
       const callLogs = logsData || [];
-      toast.success(`Debug: fetched ${callLogs.length} call logs`);
       setRawCallLogs(callLogs);
 
       const validCount = submissions.filter(s => s.status !== 'rejected').length;
@@ -1031,7 +1030,7 @@ export default function MasterReports() {
                   {templates.map(t => (
                     <button
                       key={t.id}
-                      onClick={() => navigate(`/admin/custom-dashboard/${t.id}`)}
+                      onClick={() => navigate(`/admin/reports/custom/${t.id}`)}
                       className="w-full text-left bg-bg-primary border border-bg-border p-4 rounded-xl hover:border-accent-blue/50 transition-colors group flex justify-between items-center"
                     >
                       <div>
