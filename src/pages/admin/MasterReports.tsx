@@ -42,20 +42,13 @@ interface TelecallerData {
 }
 
 interface TeamLeadData {
-  teamLeadName: string;
-  telecallerId: string;
-  telecallerName: string;
+  id: string;
+  name: string;
+  totalEntries: number;
   assigned: number;
-
-  newLeads: number;
   immediate: number;
-  hot: number;
-  warm: number;
-  cold: number;
-  skipped: number;
-  wrongNumber: number;
-  reverted: number;
   closed: number;
+  deleted: number;
 }
 
 interface CallLogData {
@@ -269,33 +262,31 @@ export default function MasterReports() {
           else if (bucket === 'reverted') tMap.reverted += 1;
           else if (bucket === 'closed') tMap.closed += 1;
           
-          // Team Lead -> Telecaller stats
-          const actualTl = sub.surveyor_id ? surveyorToTlMap.get(sub.surveyor_id) : null;
           
+          const actualTl = sub.surveyor_id ? surveyorToTlMap.get(sub.surveyor_id) : null;
           if (actualTl) {
-            const tlKey = `${actualTl.id}_${sub.telecaller_id}`;
-            if (!teamLeadMap[tlKey]) {
-              teamLeadMap[tlKey] = {
-                teamLeadName: actualTl.name,
-                telecallerId: sub.telecaller_id,
-                telecallerName: tcNameMap.get(sub.telecaller_id) || 'Unknown Telecaller',
-                assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+            if (!teamLeadMap[actualTl.id]) {
+              teamLeadMap[actualTl.id] = {
+                id: actualTl.id,
+                name: actualTl.name,
+                totalEntries: 0,
+                assigned: 0,
+                immediate: 0,
+                closed: 0,
+                deleted: 0
               };
             }
-            const tlMap = teamLeadMap[tlKey];
-            tlMap.assigned += 1;
+            const tlMap = teamLeadMap[actualTl.id];
+            tlMap.totalEntries += 1;
             
-            if (bucket === 'new') tlMap.newLeads += 1;
-            else if (bucket === 'immediate') tlMap.immediate += 1;
-            else if (bucket === 'hot') tlMap.hot += 1;
-            else if (bucket === 'warm') tlMap.warm += 1;
-            else if (bucket === 'cold') tlMap.cold += 1;
-            else if (bucket === 'skipped') tlMap.skipped += 1;
-            else if (bucket === 'wrong_number') tlMap.wrongNumber += 1;
-            else if (bucket === 'reverted') tlMap.reverted += 1;
+            if (sub.telecaller_id) {
+              tlMap.assigned += 1;
+            }
+
+            if (bucket === 'immediate') tlMap.immediate += 1;
             else if (bucket === 'closed') tlMap.closed += 1;
+            else if (bucket === 'deleted') tlMap.deleted += 1;
           }
-        }
 
         let tName = 'Unknown';
         if (sub.form_templates) {
@@ -373,7 +364,7 @@ export default function MasterReports() {
       
       setDataSurveyors(Object.values(survMap).sort((a,b) => b.submissions - a.submissions));
       setDataTelecallers(Object.values(telecallerMap).sort((a,b) => b.assigned - a.assigned));
-      setDataTeamLeads(Object.values(teamLeadMap).sort((a,b) => b.assigned - a.assigned));
+      setDataTeamLeads(Object.values(teamLeadMap).sort((a,b) => b.totalEntries - a.totalEntries));
       
       setMasterDump(rawDump.sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime()));
 
@@ -693,45 +684,33 @@ export default function MasterReports() {
       ) : activeTab === 'teamlead' ? (
         <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
           <div className="p-5 border-b border-bg-border">
-            <h3 className="text-sm font-semibold text-white">Team Lead Assignments Report</h3>
-            <p className="text-xs text-text-muted mt-1">Review how many leads were assigned by Team Leads to specific Telecallers.</p>
+            <h3 className="text-sm font-semibold text-white">Team Lead Performance Report</h3>
+            <p className="text-xs text-text-muted mt-1">Review team lead submission volumes and lead dispositions.</p>
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
                 <tr className="text-text-muted text-[10px] uppercase tracking-widest">
                   <th className="py-3 px-4 font-semibold">Team Lead</th>
-                  <th className="py-3 px-4 font-semibold">Assigned Telecaller</th>
-                  <th className="py-3 px-4 font-semibold text-center">Total Assigned</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-green">New</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Cold</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-yellow">Warm</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Hot</th>
+                  <th className="py-3 px-4 font-semibold text-center">Total Entries</th>
+                  <th className="py-3 px-4 font-semibold text-center">Assigned to TC</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
-                  <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped</th>
-                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Wrong No.</th>
-                  <th className="py-3 px-4 font-semibold text-center text-purple-400">Reverted</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-green">Closed</th>
+                  <th className="py-3 px-4 font-semibold text-center text-red-500">Deleted</th>
                 </tr>
               </thead>
               <tbody>
                 {dataTeamLeads.length > 0 ? dataTeamLeads.map((d, i) => (
                   <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors">
-                    <td className="py-3 px-4 text-white font-medium">{d.teamLeadName}</td>
-                    <td className="py-3 px-4 text-text-secondary">{d.telecallerName}</td>
-                    <td className="py-3 px-4 text-center font-bold text-white">{d.assigned.toLocaleString()}</td>
-                    <td className="py-3 px-4 text-center text-accent-green font-medium">{d.newLeads}</td>
-                    <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.cold}</td>
-                    <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
-                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
-                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.immediate}</td>
-                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped}</td>
-                    <td className="py-3 px-4 text-center text-orange-400">{d.wrongNumber}</td>
-                    <td className="py-3 px-4 text-center text-purple-400 font-medium">{d.reverted}</td>
-                    <td className="py-3 px-4 text-center text-accent-green font-bold">{d.closed}</td>
+                    <td className="py-3 px-4 text-white font-medium">{d.name}</td>
+                    <td className="py-3 px-4 text-center font-bold text-white">{d.totalEntries.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center font-medium text-text-secondary">{d.assigned.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center font-medium text-accent-red">{d.immediate.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center font-medium text-accent-green">{d.closed.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center font-medium text-red-500">{d.deleted.toLocaleString()}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={9} className="py-8 text-center text-text-muted">No assignment data available.</td></tr>
+                  <tr><td colSpan={6} className="py-8 text-center text-text-muted">No team lead data available.</td></tr>
                 )}
               </tbody>
             </table>

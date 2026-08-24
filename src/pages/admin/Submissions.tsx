@@ -21,7 +21,6 @@ export default function Submissions() {
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [adminNotes, setAdminNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isUpdating, setIsUpdating] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -47,35 +46,7 @@ export default function Submissions() {
     fetchData();
   }, []);
 
-  const handleUpdateStatus = async (newStatus: string) => {
-    if (!selectedSub || !user) return;
-    setIsUpdating(true);
-    try {
-      const { error } = await supabase
-        .from('submissions')
-        .update({ 
-          status: newStatus,
-          admin_notes: adminNotes,
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: user.id
-        })
-        .eq('id', selectedSub.id);
-        
-      if (error) throw error;
-      
-      toast.success(`Submission ${newStatus} successfully`);
-      
-      // Update local state
-      setSubmissions(prev => prev.map(s => s.id === selectedSub.id ? { ...s, status: newStatus, admin_notes: adminNotes } : s));
-      setSelectedSub(prev => ({ ...prev, status: newStatus, admin_notes: adminNotes }));
-      
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to update status');
-    } finally {
-      setIsUpdating(false);
-    }
-  };
+
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -152,7 +123,8 @@ export default function Submissions() {
                   <th className="py-3 px-5 font-semibold">Surveyor</th>
                   <th className="py-3 px-5 font-semibold">Domain</th>
                   <th className="py-3 px-5 font-semibold">Submitted At</th>
-                  <th className="py-3 px-5 font-semibold">Status</th>
+                  <th className="py-3 px-5 font-semibold">Form Status</th>
+                  <th className="py-3 px-5 font-semibold">Lead Status</th>
                   <th className="py-3 px-5 font-semibold text-right">Action</th>
                 </tr>
               </thead>
@@ -173,6 +145,11 @@ export default function Submissions() {
                     <td className="py-3 px-5 text-text-secondary">{sub.domains?.name || '-'}</td>
                     <td className="py-3 px-5 text-text-secondary">{format(new Date(sub.submitted_at), 'MMM dd, hh:mm a')}</td>
                     <td className="py-3 px-5">{getStatusBadge(sub.status)}</td>
+                    <td className="py-3 px-5">
+                      <span className="inline-flex items-center px-2 py-1 rounded bg-bg-primary text-[10px] text-text-secondary border border-bg-border uppercase tracking-wider font-bold">
+                        {sub.lead_status || 'NEW'}
+                      </span>
+                    </td>
                     <td className="py-3 px-5 text-right">
                       <Button variant="ghost" size="sm" onClick={(e) => { 
                         e.stopPropagation(); 
@@ -217,7 +194,12 @@ export default function Submissions() {
                   <Badge variant="blue">{selectedSub.domains?.name}</Badge>
                 </div>
               </div>
-              <div>{getStatusBadge(selectedSub.status)}</div>
+              <div className="flex flex-col items-end gap-2">
+                {getStatusBadge(selectedSub.status)}
+                <span className="inline-flex items-center px-2 py-1 rounded bg-bg-primary text-[10px] text-text-secondary border border-bg-border uppercase tracking-wider font-bold">
+                  {selectedSub.lead_status || 'NEW'}
+                </span>
+              </div>
             </div>
 
             <div className="text-xs text-text-muted uppercase tracking-widest border-b border-bg-border pb-2">Submitted Data</div>
@@ -292,22 +274,6 @@ export default function Submissions() {
             </div>
           </div>
 
-          <div className="p-4 border-t border-bg-border bg-bg-primary flex gap-3">
-            <Button 
-              className="flex-1 bg-accent-green hover:bg-accent-green/90 text-white border-transparent"
-              onClick={() => handleUpdateStatus('approved')}
-              isLoading={isUpdating}
-            >
-              <Check className="w-4 h-4 mr-2" /> Approve
-            </Button>
-            <Button 
-              className="flex-1 bg-accent-red hover:bg-accent-red/90 text-white border-transparent"
-              onClick={() => handleUpdateStatus('rejected')}
-              isLoading={isUpdating}
-            >
-              <XCircle className="w-4 h-4 mr-2" /> Reject
-            </Button>
-          </div>
         </div>
       )}
     </div>
