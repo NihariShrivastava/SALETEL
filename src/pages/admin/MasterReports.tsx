@@ -77,6 +77,9 @@ export default function MasterReports() {
   const [dataSurveyors, setDataSurveyors] = useState<SurveyorData[]>([]);
   const [dataTelecallers, setDataTelecallers] = useState<TelecallerData[]>([]);
   const [dataTeamLeads, setDataTeamLeads] = useState<TeamLeadData[]>([]);
+  const [teamLeadPage, setTeamLeadPage] = useState(1);
+  const teamLeadItemsPerPage = 20;
+  
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [masterDump, setMasterDump] = useState<any[]>([]);
   const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
@@ -886,9 +889,13 @@ export default function MasterReports() {
                 </tr>
               </thead>
               <tbody>
-                {dataTeamLeads.length > 0 ? dataTeamLeads.map((d, i) => (
-                  <React.Fragment key={d.id || i}>
-                    <tr 
+                {(() => {
+                  const totalPages = Math.ceil(dataTeamLeads.length / teamLeadItemsPerPage);
+                  const currentItems = dataTeamLeads.slice((teamLeadPage - 1) * teamLeadItemsPerPage, teamLeadPage * teamLeadItemsPerPage);
+                  
+                  return currentItems.length > 0 ? currentItems.map((d, i) => (
+                    <React.Fragment key={d.id || i}>
+                      <tr 
                       className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer"
                       onClick={() => toggleTlRow(d.id)}
                     >
@@ -933,13 +940,41 @@ export default function MasterReports() {
                         </td>
                       </tr>
                     )}
-                  </React.Fragment>
-                )) : (
-                  <tr><td colSpan={6} className="py-8 text-center text-text-muted">No team lead data available.</td></tr>
-                )}
+                    </React.Fragment>
+                  )) : (
+                    <tr><td colSpan={6} className="py-8 text-center text-text-muted">No team lead data available.</td></tr>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
+          {(() => {
+            const totalPages = Math.ceil(dataTeamLeads.length / teamLeadItemsPerPage);
+            if (totalPages <= 1) return null;
+            return (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-bg-border bg-bg-primary shrink-0">
+                <div className="text-sm text-text-muted">
+                  Showing <span className="text-white font-medium">{(teamLeadPage - 1) * teamLeadItemsPerPage + 1}</span> to <span className="text-white font-medium">{Math.min(teamLeadPage * teamLeadItemsPerPage, dataTeamLeads.length)}</span> of <span className="text-white font-medium">{dataTeamLeads.length}</span> results
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setTeamLeadPage(p => Math.max(1, p - 1))}
+                    disabled={teamLeadPage === 1}
+                    className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    onClick={() => setTeamLeadPage(p => Math.min(totalPages, p + 1))}
+                    disabled={teamLeadPage === totalPages}
+                    className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </Card>
       ) : activeTab === 'telecaller' ? (
         <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
