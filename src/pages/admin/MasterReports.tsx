@@ -227,6 +227,19 @@ export default function MasterReports() {
 
 
 
+        let ls = sub.lead_status || 'new';
+        // Today check for skipped
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        if (ls === 'skipped' && sub.lead_status_updated_at) {
+          if (new Date(sub.lead_status_updated_at) < today) ls = 'new';
+        }
+
+        let bucket = '';
+        if (sub.status === 'reverted') bucket = 'reverted';
+        else if (ls === 'closed') bucket = 'closed';
+        else bucket = ls;
+
         if (sub.telecaller_id) {
           // Telecaller stats
           if (!telecallerMap[sub.telecaller_id]) {
@@ -239,19 +252,6 @@ export default function MasterReports() {
           const tMap = telecallerMap[sub.telecaller_id];
           tMap.assigned += 1;
           
-          let ls = sub.lead_status || 'new';
-          // Today check for skipped
-          const today = new Date();
-          today.setHours(0,0,0,0);
-          if (ls === 'skipped' && sub.lead_status_updated_at) {
-            if (new Date(sub.lead_status_updated_at) < today) ls = 'new';
-          }
-
-          let bucket = '';
-          if (sub.status === 'reverted') bucket = 'reverted';
-          else if (ls === 'closed') bucket = 'closed';
-          else bucket = ls;
-
           if (bucket === 'new') tMap.newLeads += 1;
           else if (bucket === 'immediate') tMap.immediate += 1;
           else if (bucket === 'hot') tMap.hot += 1;
@@ -261,32 +261,32 @@ export default function MasterReports() {
           else if (bucket === 'wrong_number') tMap.wrongNumber += 1;
           else if (bucket === 'reverted') tMap.reverted += 1;
           else if (bucket === 'closed') tMap.closed += 1;
-          
-          
-          const actualTl = sub.surveyor_id ? surveyorToTlMap.get(sub.surveyor_id) : null;
-          if (actualTl) {
-            if (!teamLeadMap[actualTl.id]) {
-              teamLeadMap[actualTl.id] = {
-                id: actualTl.id,
-                name: actualTl.name,
-                totalEntries: 0,
-                assigned: 0,
-                immediate: 0,
-                closed: 0,
-                deleted: 0
-              };
-            }
-            const tlMap = teamLeadMap[actualTl.id];
-            tlMap.totalEntries += 1;
-            
-            if (sub.telecaller_id) {
-              tlMap.assigned += 1;
-            }
-
-            if (bucket === 'immediate') tlMap.immediate += 1;
-            else if (bucket === 'closed') tlMap.closed += 1;
-            else if (bucket === 'deleted') tlMap.deleted += 1;
+        }
+        
+        const actualTl = sub.surveyor_id ? surveyorToTlMap.get(sub.surveyor_id) : null;
+        if (actualTl) {
+          if (!teamLeadMap[actualTl.id]) {
+            teamLeadMap[actualTl.id] = {
+              id: actualTl.id,
+              name: actualTl.name,
+              totalEntries: 0,
+              assigned: 0,
+              immediate: 0,
+              closed: 0,
+              deleted: 0
+            };
           }
+          const tlMap = teamLeadMap[actualTl.id];
+          tlMap.totalEntries += 1;
+          
+          if (sub.telecaller_id) {
+            tlMap.assigned += 1;
+          }
+
+          if (bucket === 'immediate') tlMap.immediate += 1;
+          else if (bucket === 'closed') tlMap.closed += 1;
+          else if (bucket === 'deleted') tlMap.deleted += 1;
+        }
 
         let tName = 'Unknown';
         if (sub.form_templates) {
