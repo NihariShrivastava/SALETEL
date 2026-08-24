@@ -36,6 +36,13 @@ export default function TeamLeadDashboard() {
   const [selectedSurveyor, setSelectedSurveyor] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
+  const [slidePage, setSlidePage] = useState(1);
+  const itemsPerPage = 20;
+
+  useEffect(() => {
+    setSlidePage(1);
+  }, [activeSlide, selectedSurveyor, selectedStatus]);
+
   // Status filter for tabs
 
   const fetchSubmissions = async () => {
@@ -185,6 +192,16 @@ export default function TeamLeadDashboard() {
   const wrongNumberLeads = filteredSubmissions.filter(s => s.lead_status === 'wrong_number');
   const closedLeads = filteredSubmissions.filter(s => s.lead_status === 'closed');
   const deletedLeads = filteredSubmissions.filter(s => s.lead_status === 'deleted');
+
+  const getPaginated = (arr: any[]) => arr.slice((slidePage - 1) * itemsPerPage, slidePage * itemsPerPage);
+
+  const paginatedTelecallerData = getPaginated(telecallerData);
+  const paginatedAssignedLeadsLogs = getPaginated(assignedLeadsLogs);
+  const paginatedImmediateLeads = getPaginated(immediateLeads);
+  const paginatedRevertedLeads = getPaginated(revertedLeads);
+  const paginatedWrongNumberLeads = getPaginated(wrongNumberLeads);
+  const paginatedClosedLeads = getPaginated(closedLeads);
+  const paginatedDeletedLeads = getPaginated(deletedLeads);
 
   const slides = [
     { id: 'performance', title: 'Telecaller Performance Report' },
@@ -394,7 +411,7 @@ export default function TeamLeadDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {telecallerData.map((tc: any, i) => (
+                  {getPaginated(telecallerData).map((tc: any, i) => (
                     <tr
                       key={i}
                       className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors cursor-pointer group"
@@ -437,7 +454,7 @@ export default function TeamLeadDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {assignedLeadsLogs.map(lead => (
+                  {paginatedAssignedLeadsLogs.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
                       <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unknown'}</td>
@@ -475,7 +492,7 @@ export default function TeamLeadDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {immediateLeads.map(lead => (
+                  {paginatedImmediateLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
                       <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
@@ -516,7 +533,7 @@ export default function TeamLeadDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {revertedLeads.map(lead => (
+                  {paginatedRevertedLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
                       <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
@@ -557,7 +574,7 @@ export default function TeamLeadDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {wrongNumberLeads.map(lead => (
+                  {paginatedWrongNumberLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
                       <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
@@ -598,7 +615,7 @@ export default function TeamLeadDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {closedLeads.map(lead => (
+                  {paginatedClosedLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
                       <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
@@ -639,7 +656,7 @@ export default function TeamLeadDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {deletedLeads.map(lead => (
+                  {paginatedDeletedLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
                       <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
@@ -664,6 +681,48 @@ export default function TeamLeadDashboard() {
             </div>
           )}
         </div>
+
+        {(() => {
+          const getCurrentArrayLength = () => {
+            switch (activeSlide) {
+              case 0: return telecallerData.length;
+              case 1: return assignedLeadsLogs.length;
+              case 2: return immediateLeads.length;
+              case 3: return revertedLeads.length;
+              case 4: return wrongNumberLeads.length;
+              case 5: return closedLeads.length;
+              case 6: return deletedLeads.length;
+              default: return 0;
+            }
+          };
+          const totalItems = getCurrentArrayLength();
+          const totalPages = Math.ceil(totalItems / itemsPerPage);
+          if (totalPages <= 1) return null;
+          
+          return (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-bg-border bg-bg-primary shrink-0">
+              <div className="text-sm text-text-muted">
+                Showing <span className="text-white font-medium">{(slidePage - 1) * itemsPerPage + 1}</span> to <span className="text-white font-medium">{Math.min(slidePage * itemsPerPage, totalItems)}</span> of <span className="text-white font-medium">{totalItems}</span> results
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setSlidePage(p => Math.max(1, p - 1))}
+                  disabled={slidePage === 1}
+                  className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                >
+                  Previous
+                </button>
+                <button 
+                  onClick={() => setSlidePage(p => Math.min(totalPages, p + 1))}
+                  disabled={slidePage === totalPages}
+                  className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </Card>
 
 
