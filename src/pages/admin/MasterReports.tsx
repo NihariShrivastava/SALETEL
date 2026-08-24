@@ -28,6 +28,8 @@ interface TelecallerData {
   cold: number;
   skipped: number;
   wrongNumber: number;
+  reverted: number;
+  closed: number;
 }
 
 interface TeamLeadData {
@@ -43,6 +45,8 @@ interface TeamLeadData {
   cold: number;
   skipped: number;
   wrongNumber: number;
+  reverted: number;
+  closed: number;
 }
 
 interface CallLogData {
@@ -235,7 +239,7 @@ export default function MasterReports() {
             telecallerMap[sub.telecaller_id] = {
               id: sub.telecaller_id,
               name: tcNameMap.get(sub.telecaller_id) || 'Unknown Telecaller',
-              assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0
+              assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
             };
           }
           const tMap = telecallerMap[sub.telecaller_id];
@@ -249,13 +253,20 @@ export default function MasterReports() {
             if (new Date(sub.lead_status_updated_at) < today) ls = 'new';
           }
 
-          if (ls === 'new') tMap.newLeads += 1;
-          else if (ls === 'immediate') tMap.immediate += 1;
-          else if (ls === 'hot') tMap.hot += 1;
-          else if (ls === 'warm') tMap.warm += 1;
-          else if (ls === 'cold') tMap.cold += 1;
-          else if (ls === 'skipped') tMap.skipped += 1;
-          else if (ls === 'wrong_number') tMap.wrongNumber += 1;
+          let bucket = '';
+          if (sub.status === 'reverted') bucket = 'reverted';
+          else if (ls === 'closed') bucket = 'closed';
+          else bucket = ls;
+
+          if (bucket === 'new') tMap.newLeads += 1;
+          else if (bucket === 'immediate') tMap.immediate += 1;
+          else if (bucket === 'hot') tMap.hot += 1;
+          else if (bucket === 'warm') tMap.warm += 1;
+          else if (bucket === 'cold') tMap.cold += 1;
+          else if (bucket === 'skipped') tMap.skipped += 1;
+          else if (bucket === 'wrong_number') tMap.wrongNumber += 1;
+          else if (bucket === 'reverted') tMap.reverted += 1;
+          else if (bucket === 'closed') tMap.closed += 1;
           
           // Team Lead -> Telecaller stats
           const actualTl = sub.surveyor_id ? surveyorToTlMap.get(sub.surveyor_id) : null;
@@ -267,19 +278,21 @@ export default function MasterReports() {
                 teamLeadName: actualTl.name,
                 telecallerId: sub.telecaller_id,
                 telecallerName: tcNameMap.get(sub.telecaller_id) || 'Unknown Telecaller',
-                assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0
+                assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
               };
             }
             const tlMap = teamLeadMap[tlKey];
             tlMap.assigned += 1;
             
-            if (ls === 'new') tlMap.newLeads += 1;
-            else if (ls === 'immediate') tlMap.immediate += 1;
-            else if (ls === 'hot') tlMap.hot += 1;
-            else if (ls === 'warm') tlMap.warm += 1;
-            else if (ls === 'cold') tlMap.cold += 1;
-            else if (ls === 'skipped') tlMap.skipped += 1;
-            else if (ls === 'wrong_number') tlMap.wrongNumber += 1;
+            if (bucket === 'new') tlMap.newLeads += 1;
+            else if (bucket === 'immediate') tlMap.immediate += 1;
+            else if (bucket === 'hot') tlMap.hot += 1;
+            else if (bucket === 'warm') tlMap.warm += 1;
+            else if (bucket === 'cold') tlMap.cold += 1;
+            else if (bucket === 'skipped') tlMap.skipped += 1;
+            else if (bucket === 'wrong_number') tlMap.wrongNumber += 1;
+            else if (bucket === 'reverted') tlMap.reverted += 1;
+            else if (bucket === 'closed') tlMap.closed += 1;
           }
         }
 
@@ -378,7 +391,10 @@ export default function MasterReports() {
         'Warm': d.warm,
         'Hot': d.hot,
         'Immediate': d.immediate,
-        'Skipped/No Connect': d.skipped + d.wrongNumber
+        'Skipped': d.skipped,
+        'Wrong Number': d.wrongNumber,
+        'Reverted': d.reverted,
+        'Closed': d.closed
       }));
       sheetName = 'By Team Lead';
     } else if (activeTab === 'telecaller') {
@@ -390,7 +406,10 @@ export default function MasterReports() {
         'Warm': d.warm,
         'Hot': d.hot,
         'Immediate': d.immediate,
-        'Skipped/No Connect': d.skipped + d.wrongNumber
+        'Skipped': d.skipped,
+        'Wrong Number': d.wrongNumber,
+        'Reverted': d.reverted,
+        'Closed': d.closed
       }));
       sheetName = 'By Telecaller';
     } else {
@@ -724,7 +743,10 @@ export default function MasterReports() {
                   <th className="py-3 px-4 font-semibold text-center text-accent-yellow">Warm</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-red">Hot</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
-                  <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped/No Connect</th>
+                  <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped</th>
+                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Wrong No.</th>
+                  <th className="py-3 px-4 font-semibold text-center text-purple-400">Reverted</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">Closed</th>
                 </tr>
               </thead>
               <tbody>
@@ -738,7 +760,10 @@ export default function MasterReports() {
                     <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
                     <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
                     <td className="py-3 px-4 text-center text-accent-red font-medium">{d.immediate}</td>
-                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped + d.wrongNumber}</td>
+                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped}</td>
+                    <td className="py-3 px-4 text-center text-orange-400">{d.wrongNumber}</td>
+                    <td className="py-3 px-4 text-center text-purple-400 font-medium">{d.reverted}</td>
+                    <td className="py-3 px-4 text-center text-accent-green font-bold">{d.closed}</td>
                   </tr>
                 )) : (
                   <tr><td colSpan={9} className="py-8 text-center text-text-muted">No assignment data available.</td></tr>
@@ -764,7 +789,10 @@ export default function MasterReports() {
                   <th className="py-3 px-4 font-semibold text-center text-accent-yellow">Warm</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-red">Hot</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
-                  <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped/No Connect</th>
+                  <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped</th>
+                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Wrong No.</th>
+                  <th className="py-3 px-4 font-semibold text-center text-purple-400">Reverted</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">Closed</th>
                 </tr>
               </thead>
               <tbody>
@@ -777,7 +805,10 @@ export default function MasterReports() {
                     <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
                     <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
                     <td className="py-3 px-4 text-center text-accent-red font-medium">{d.immediate}</td>
-                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped + d.wrongNumber}</td>
+                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped}</td>
+                    <td className="py-3 px-4 text-center text-orange-400">{d.wrongNumber}</td>
+                    <td className="py-3 px-4 text-center text-purple-400 font-medium">{d.reverted}</td>
+                    <td className="py-3 px-4 text-center text-accent-green font-bold">{d.closed}</td>
                   </tr>
                 )) : (
                   <tr><td colSpan={8} className="py-8 text-center text-text-muted">No telecaller data available.</td></tr>
