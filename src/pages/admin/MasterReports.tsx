@@ -445,9 +445,6 @@ export default function MasterReports() {
     if (activeTab === 'domain') {
       dataToExport = dataDomains.map(d => ({ Domain: d.name, Submissions: d.count }));
       sheetName = 'By Domain';
-    } else if (activeTab === 'role') {
-      dataToExport = dataRoles.map(d => ({ Role: d.name, Submissions: d.count }));
-      sheetName = 'By Role';
     } else if (activeTab === 'person') {
       dataToExport = dataSurveyors.map(d => ({ Surveyor: d.name, Role: d.role, Submissions: d.submissions }));
       sheetName = 'By Surveyor';
@@ -532,7 +529,6 @@ export default function MasterReports() {
 
   const tabs = [
     { id: 'domain', label: 'By Domain', icon: Database },
-    { id: 'role', label: 'By Role', icon: Users },
     { id: 'person', label: 'By Surveyor', icon: Filter },
     { id: 'teamlead', label: 'By Team Lead', icon: Building2 },
     { id: 'telecaller', label: 'By Telecaller', icon: PhoneCall },
@@ -1006,9 +1002,9 @@ export default function MasterReports() {
                 <Loader2 className="w-8 h-8 animate-spin text-accent-blue mb-4" />
                 <p>Loading analytics...</p>
               </div>
-            ) : activeTab === 'domain' || activeTab === 'role' ? (
+            ) : activeTab === 'domain' ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={activeTab === 'domain' ? dataDomains : dataRoles}>
+                <BarChart data={dataDomains}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#252840" vertical={false} />
                   <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
@@ -1017,7 +1013,7 @@ export default function MasterReports() {
                     cursor={{ fill: '#1e2235' }}
                   />
                   <Bar dataKey="count" fill="#4f6ef7" radius={[4, 4, 0, 0]}>
-                    {(activeTab === 'domain' ? dataDomains : dataRoles).map((_, index) => (
+                    {dataDomains.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Bar>
@@ -1064,7 +1060,7 @@ export default function MasterReports() {
                   </tr>
                 )}
                 
-                {!isLoading && (activeTab === 'domain' || activeTab === 'role') && (activeTab === 'domain' ? dataDomains : dataRoles).map((d, i) => (
+                {!isLoading && activeTab === 'domain' && dataDomains.map((d, i) => (
                   <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50">
                     <td className="py-3 px-4 text-white font-medium">{d.name}</td>
                     <td className="py-3 px-4 text-right text-text-secondary font-mono">{d.count}</td>
@@ -1083,7 +1079,6 @@ export default function MasterReports() {
                 ))}
                 {!isLoading && activeTab !== 'master' && 
                  ((activeTab === 'domain' && dataDomains.length === 0) ||
-                  (activeTab === 'role' && dataRoles.length === 0) ||
                   (activeTab === 'person' && dataSurveyors.length === 0)) && (
                   <tr>
                     <td colSpan={2} className="py-8 text-center text-text-muted italic">No data available.</td>
