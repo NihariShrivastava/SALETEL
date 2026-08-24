@@ -113,8 +113,13 @@ export default function MasterReports() {
   useEffect(() => {
     fetchData();
   }, []);
+  const handleClearDates = () => {
+    setGlobalStartDate('');
+    setGlobalEndDate('');
+    fetchData('', '');
+  };
 
-  const fetchData = async () => {
+  const fetchData = async (start = globalStartDate, end = globalEndDate) => {
     setIsLoading(true);
     try {
       const { count: domainCount, error: domainError } = await supabase.from('domains').select('*', { count: 'exact', head: true });
@@ -141,11 +146,11 @@ export default function MasterReports() {
           surveyor_id
         `);
 
-      if (globalStartDate) {
-        subsQuery = subsQuery.gte('submitted_at', startOfDay(new Date(globalStartDate)).toISOString());
+      if (start) {
+        subsQuery = subsQuery.gte('submitted_at', startOfDay(new Date(start)).toISOString());
       }
-      if (globalEndDate) {
-        subsQuery = subsQuery.lte('submitted_at', endOfDay(new Date(globalEndDate)).toISOString());
+      if (end) {
+        subsQuery = subsQuery.lte('submitted_at', endOfDay(new Date(end)).toISOString());
       }
 
       const { data: subData, error: subError } = await subsQuery;
@@ -159,11 +164,11 @@ export default function MasterReports() {
         .from('lead_call_logs')
         .select('*');
 
-      if (globalStartDate) {
-        logsQuery = logsQuery.gte('created_at', startOfDay(new Date(globalStartDate)).toISOString());
+      if (start) {
+        logsQuery = logsQuery.gte('created_at', startOfDay(new Date(start)).toISOString());
       }
-      if (globalEndDate) {
-        logsQuery = logsQuery.lte('created_at', endOfDay(new Date(globalEndDate)).toISOString());
+      if (end) {
+        logsQuery = logsQuery.lte('created_at', endOfDay(new Date(end)).toISOString());
       }
 
       const { data: logsData, error: logsError } = await logsQuery;
@@ -557,6 +562,12 @@ export default function MasterReports() {
               value={globalEndDate}
               onChange={(e) => setGlobalEndDate(e.target.value)}
             />
+            <button
+              onClick={handleClearDates}
+              className="ml-1 px-3 py-1 bg-bg-secondary text-text-muted hover:text-white hover:bg-bg-border text-xs font-semibold rounded-md transition-colors"
+            >
+              Clear
+            </button>
             <button
               onClick={() => fetchData()}
               className="ml-2 px-3 py-1 bg-accent-blue/10 text-accent-blue hover:bg-accent-blue hover:text-white text-xs font-semibold rounded-md transition-colors"
