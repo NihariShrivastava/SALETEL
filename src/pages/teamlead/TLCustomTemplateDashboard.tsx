@@ -66,6 +66,7 @@ export default function CustomTemplateDashboard() {
         .select(`*, surveyors!surveyor_id(username, full_name)`)
         .eq('form_template_id', templateId)
         .in('surveyor_id', user.assigned_users)
+        .is('telecaller_id', null)
         .order('submitted_at', { ascending: false });
 
       if (subError) throw subError;

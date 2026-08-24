@@ -40,16 +40,37 @@ export default function TelecallerDashboard() {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
+        const staleSkippedIds = data
+          .filter(lead => {
+            if (lead.lead_status === 'skipped' && lead.lead_status_updated_at) {
+              const updatedDate = new Date(lead.lead_status_updated_at);
+              return updatedDate < today;
+            }
+            return false;
+          })
+          .map(lead => lead.id);
+
+        if (staleSkippedIds.length > 0) {
+          supabase.from('submissions')
+            .update({ 
+              lead_status: 'new', 
+              lead_status_updated_at: new Date().toISOString() 
+            })
+            .in('id', staleSkippedIds)
+            .then(({ error }) => {
+              if (error) console.error('Failed to reset skipped leads', error);
+            });
+            
+          data.forEach(lead => {
+            if (staleSkippedIds.includes(lead.id)) {
+              lead.lead_status = 'new';
+              lead.lead_status_updated_at = new Date().toISOString();
+            }
+          });
+        }
+
         const processed = data.map(lead => {
           let currentStatus = lead.lead_status || 'new';
-          
-          if (currentStatus === 'skipped' && lead.lead_status_updated_at) {
-            const updatedDate = new Date(lead.lead_status_updated_at);
-            if (updatedDate < today) {
-              currentStatus = 'new';
-            }
-          }
-          
           return { ...lead, computed_status: currentStatus };
         });
 

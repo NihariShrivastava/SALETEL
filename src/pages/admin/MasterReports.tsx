@@ -30,6 +30,11 @@ interface TelecallerData {
   wrongNumber: number;
   reverted: number;
   closed: number;
+  callsToNew?: number;
+  callsToCold?: number;
+  callsToWarm?: number;
+  callsToHot?: number;
+  callsToSkipped?: number;
 }
 
 interface TeamLeadData {
@@ -348,6 +353,19 @@ export default function MasterReports() {
         rawDump.push(rowData);
       });
 
+      // Merge call logs into telecallerMap
+      callLogs.forEach((log: any) => {
+        const tcId = log.telecaller_id;
+        if (telecallerMap[tcId]) {
+          const pStat = log.previous_status || 'new';
+          if (pStat === 'new') telecallerMap[tcId].callsToNew = (telecallerMap[tcId].callsToNew || 0) + 1;
+          else if (pStat === 'cold') telecallerMap[tcId].callsToCold = (telecallerMap[tcId].callsToCold || 0) + 1;
+          else if (pStat === 'warm') telecallerMap[tcId].callsToWarm = (telecallerMap[tcId].callsToWarm || 0) + 1;
+          else if (pStat === 'hot') telecallerMap[tcId].callsToHot = (telecallerMap[tcId].callsToHot || 0) + 1;
+          else if (pStat === 'skipped') telecallerMap[tcId].callsToSkipped = (telecallerMap[tcId].callsToSkipped || 0) + 1;
+        }
+      });
+
       setDynamicColumns(Array.from(dynamicKeysSet));
 
       setDataDomains(Object.entries(domainMap).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count));
@@ -466,7 +484,6 @@ export default function MasterReports() {
     { id: 'person', label: 'By Surveyor', icon: Filter },
     { id: 'teamlead', label: 'By Team Lead', icon: Building2 },
     { id: 'telecaller', label: 'By Telecaller', icon: PhoneCall },
-    { id: 'call_activity', label: 'Call Activity', icon: PhoneCall },
     { id: 'master', label: 'Master Dump', icon: Database },
   ];
 
@@ -532,58 +549,7 @@ export default function MasterReports() {
         </Card>
       </div>
 
-      {activeTab === 'call_activity' ? (
-        <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
-          <div className="p-5 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Telecaller Activity Analytics</h3>
-              <p className="text-xs text-text-muted mt-1">Review the actual call attempts made, broken down by the lead's prior status.</p>
-            </div>
-            <div className="bg-bg-primary border border-bg-border px-4 py-2 rounded-lg text-sm text-text-secondary">
-              Total Calls Logged: <span className="text-white font-bold">{dataCallLogs.reduce((acc, curr) => acc + curr.totalCalls, 0)}</span>
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
-                <tr className="text-text-muted text-[10px] uppercase tracking-widest">
-                  <th className="py-3 px-4 font-semibold">Telecaller</th>
-                  <th className="py-3 px-4 font-semibold text-center">Total Calls</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-green">Calls to New</th>
-                  <th className="py-3 px-4 font-semibold text-center text-blue-400">Calls to Cold</th>
-                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Calls to Warm</th>
-                  <th className="py-3 px-4 font-semibold text-center text-red-400">Calls to Hot</th>
-                  <th className="py-3 px-4 font-semibold text-center text-purple-400">Calls to Skipped</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dataCallLogs.length === 0 ? (
-                  <tr><td colSpan={7} className="py-12 text-center text-text-muted italic">No call activity recorded yet. (Debug: rawCallLogs: {rawCallLogs.length}, Error: {debugError})</td></tr>
-                ) : (
-                  dataCallLogs.map((log, i) => (
-                    <tr key={i} className="border-b border-bg-border hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => setSelectedTelecallerForCallLogs({ id: log.telecallerId, name: log.telecallerName })}>
-                      <td className="py-3 px-4 font-medium text-white border-r border-bg-border/50">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-accent-blue/20 flex items-center justify-center text-[10px] text-accent-blue font-bold">
-                            {log.telecallerName.charAt(0).toUpperCase()}
-                          </div>
-                          {log.telecallerName}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-center font-bold text-white bg-bg-primary/30 text-lg border-r border-bg-border/50">{log.totalCalls}</td>
-                      <td className="py-3 px-4 text-center text-accent-green font-medium">{log.byPreviousStatus['new'] || 0}</td>
-                      <td className="py-3 px-4 text-center text-blue-400 font-medium">{log.byPreviousStatus['cold'] || 0}</td>
-                      <td className="py-3 px-4 text-center text-orange-400 font-medium">{log.byPreviousStatus['warm'] || 0}</td>
-                      <td className="py-3 px-4 text-center text-red-400 font-medium">{log.byPreviousStatus['hot'] || 0}</td>
-                      <td className="py-3 px-4 text-center text-purple-400 font-medium">{log.byPreviousStatus['skipped'] || 0}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ) : activeTab === 'master' ? (
+      {activeTab === 'master' ? (
         <Card className="flex flex-col p-0 overflow-hidden">
           <div className="p-5 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h3 className="text-sm font-semibold text-white">Master Data Entries</h3>
@@ -800,12 +766,12 @@ export default function MasterReports() {
                   <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => navigate(`/admin/telecaller/${d.id}`)}>
                     <td className="py-3 px-4 text-white font-medium">{d.name}</td>
                     <td className="py-3 px-4 text-center font-bold text-white">{d.assigned.toLocaleString()}</td>
-                    <td className="py-3 px-4 text-center text-accent-green font-medium">{d.newLeads}</td>
-                    <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.cold}</td>
-                    <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
-                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
+                    <td className="py-3 px-4 text-center text-accent-green font-medium">{d.callsToNew || 0} / {d.newLeads}</td>
+                    <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.callsToCold || 0} / {d.cold}</td>
+                    <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.callsToWarm || 0} / {d.warm}</td>
+                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.callsToHot || 0} / {d.hot}</td>
                     <td className="py-3 px-4 text-center text-accent-red font-medium">{d.immediate}</td>
-                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped}</td>
+                    <td className="py-3 px-4 text-center text-text-muted">{d.callsToSkipped || 0} / {d.skipped}</td>
                     <td className="py-3 px-4 text-center text-orange-400">{d.wrongNumber}</td>
                     <td className="py-3 px-4 text-center text-purple-400 font-medium">{d.reverted}</td>
                     <td className="py-3 px-4 text-center text-accent-green font-bold">{d.closed}</td>
