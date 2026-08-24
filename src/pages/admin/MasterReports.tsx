@@ -539,6 +539,160 @@ export default function MasterReports() {
     { id: 'master', label: 'Master Dump', icon: Database },
   ];
 
+  const renderSummaryCards = () => {
+    switch (activeTab) {
+      case 'domain': {
+        const totalDomains = dataDomains.length;
+        const totalSubs = dataDomains.reduce((acc, curr) => acc + curr.count, 0);
+        const topDomain = [...dataDomains].sort((a,b) => b.count - a.count)[0];
+        
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Domains</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalDomains}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Submissions</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalSubs.toLocaleString()}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Top Domain</div>
+              <div className="text-2xl font-bold text-white tracking-tight truncate">{topDomain ? topDomain.name : 'N/A'}</div>
+              <div className="text-[10px] text-accent-blue mt-1">{topDomain ? topDomain.count.toLocaleString() + ' entries' : ''}</div>
+            </Card>
+          </div>
+        );
+      }
+      case 'role': {
+        const totalRoles = dataRoles.length;
+        const totalSubs = dataRoles.reduce((acc, curr) => acc + curr.count, 0);
+        const topRole = [...dataRoles].sort((a,b) => b.count - a.count)[0];
+        
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Roles</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalRoles}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Submissions</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalSubs.toLocaleString()}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Top Role</div>
+              <div className="text-2xl font-bold text-white tracking-tight truncate">{topRole ? topRole.name : 'N/A'}</div>
+              <div className="text-[10px] text-accent-green mt-1">{topRole ? topRole.count.toLocaleString() + ' entries' : ''}</div>
+            </Card>
+          </div>
+        );
+      }
+      case 'person': {
+        const totalSurveyors = dataSurveyors.length;
+        const totalSubs = dataSurveyors.reduce((acc, curr) => acc + curr.submissions, 0);
+        const topSurveyor = [...dataSurveyors].sort((a,b) => b.submissions - a.submissions)[0];
+        
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Surveyors</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalSurveyors}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Submissions</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalSubs.toLocaleString()}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Top Surveyor</div>
+              <div className="text-2xl font-bold text-white tracking-tight truncate">{topSurveyor ? topSurveyor.name : 'N/A'}</div>
+              <div className="text-[10px] text-accent-blue mt-1">{topSurveyor ? topSurveyor.submissions.toLocaleString() + ' entries' : ''}</div>
+            </Card>
+          </div>
+        );
+      }
+      case 'teamlead': {
+        const totalTLs = dataTeamLeads.length;
+        const totalSubs = dataTeamLeads.reduce((acc, curr) => acc + curr.totalEntries, 0);
+        const totalAssigned = dataTeamLeads.reduce((acc, curr) => acc + curr.assigned, 0);
+        const totalImmediate = dataTeamLeads.reduce((acc, curr) => acc + curr.immediate, 0);
+        
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Team Leads</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalTLs}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Entries</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalSubs.toLocaleString()}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Assigned</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalAssigned.toLocaleString()}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Immediate</div>
+              <div className="text-2xl font-bold text-accent-red tracking-tight">{totalImmediate.toLocaleString()}</div>
+            </Card>
+          </div>
+        );
+      }
+      case 'telecaller': {
+        const totalTCs = dataTelecallers.length;
+        const totalAssigned = dataTelecallers.reduce((acc, curr) => acc + curr.assigned, 0);
+        const totalImmediate = dataTelecallers.reduce((acc, curr) => acc + curr.immediate, 0);
+        const totalClosed = dataTelecallers.reduce((acc, curr) => acc + curr.closed, 0);
+        
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Total Telecallers</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalTCs}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Assigned Leads</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{totalAssigned.toLocaleString()}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Immediate (TC)</div>
+              <div className="text-2xl font-bold text-accent-red tracking-tight">{totalImmediate.toLocaleString()}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-1">Closed (TC)</div>
+              <div className="text-2xl font-bold text-accent-green tracking-tight">{totalClosed.toLocaleString()}</div>
+            </Card>
+          </div>
+        );
+      }
+      case 'master':
+      default:
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="p-4">
+              <div className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Submissions</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{stats.totalSubmissions.toLocaleString()}</div>
+              <div className="text-[10px] text-text-muted mt-1 flex items-center">Total processed forms</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold mb-1">Active Domains</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{stats.activeDomains.toLocaleString()}</div>
+              <div className="text-[10px] text-text-muted mt-1 flex items-center">Configured domain scopes</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Workstations</div>
+              <div className="text-2xl font-bold text-white tracking-tight">{stats.totalWorkstations.toLocaleString()}</div>
+              <div className="text-[10px] text-text-muted mt-1 flex items-center">Active field agents / counters</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold mb-1">Data Health</div>
+              <div className="text-2xl font-bold text-accent-blue tracking-tight">{stats.dataHealth}%</div>
+              <div className="text-[10px] text-text-muted mt-1 flex items-center">Non-rejected completion rate</div>
+            </Card>
+          </div>
+        );
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -606,28 +760,7 @@ export default function MasterReports() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-4">
-          <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Submissions</div>
-          <div className="text-2xl font-bold text-white tracking-tight">{stats.totalSubmissions.toLocaleString()}</div>
-          <div className="text-xs text-text-muted mt-1 flex items-center">Total processed forms</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Active Domains</div>
-          <div className="text-2xl font-bold text-white tracking-tight">{stats.activeDomains.toLocaleString()}</div>
-          <div className="text-xs text-text-muted mt-1 flex items-center">Configured domain scopes</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Workstations</div>
-          <div className="text-2xl font-bold text-white tracking-tight">{stats.totalWorkstations.toLocaleString()}</div>
-          <div className="text-xs text-text-muted mt-1 flex items-center">Active field agents / counters</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Data Health</div>
-          <div className="text-2xl font-bold text-accent-blue tracking-tight">{stats.dataHealth}%</div>
-          <div className="text-xs text-text-muted mt-1 flex items-center">Non-rejected completion rate</div>
-        </Card>
-      </div>
+      {renderSummaryCards()}
 
       {activeTab === 'master' ? (
         <Card className="flex flex-col p-0 overflow-hidden">
