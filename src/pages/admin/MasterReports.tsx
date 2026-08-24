@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Download, Calendar, Filter, Database, Users, Building2, Loader2, Info, X, MapPin, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Download, Filter, Database, Users, Building2, Loader2, X, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -35,6 +35,10 @@ interface TelecallerData {
   callsToWarm?: number;
   callsToHot?: number;
   callsToSkipped?: number;
+  callsToImmediate?: number;
+  callsToWrongNumber?: number;
+  callsToReverted?: number;
+  callsToClosed?: number;
 }
 
 interface TeamLeadData {
@@ -71,13 +75,9 @@ export default function MasterReports() {
   const [dataSurveyors, setDataSurveyors] = useState<SurveyorData[]>([]);
   const [dataTelecallers, setDataTelecallers] = useState<TelecallerData[]>([]);
   const [dataTeamLeads, setDataTeamLeads] = useState<TeamLeadData[]>([]);
-  const [dataCallLogs, setDataCallLogs] = useState<CallLogData[]>([]);
-  const [rawCallLogs, setRawCallLogs] = useState<any[]>([]);
-  const [debugError, setDebugError] = useState<string>('none');
-  const [selectedTelecallerForCallLogs, setSelectedTelecallerForCallLogs] = useState<{ id: string, name: string } | null>(null);
+  const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [masterDump, setMasterDump] = useState<any[]>([]);
   const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
-  const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
@@ -139,10 +139,8 @@ export default function MasterReports() {
       if (logsError) {
         console.warn('Could not fetch call logs:', logsError.message);
         toast.error(`Logs Fetch Error: ${logsError.message}`);
-        setDebugError(logsError.message);
       }
       const callLogs = logsData || [];
-      setRawCallLogs(callLogs);
 
       const validCount = submissions.filter(s => s.status !== 'rejected').length;
       const dataHealth = submissions.length > 0 ? ((validCount / submissions.length) * 100) : 100;
@@ -162,8 +160,6 @@ export default function MasterReports() {
       const rawDump: any[] = [];
 
       const dynamicKeysSet = new Set<string>();
-
-      const tlIdsToFetch = new Set<string>();
       
       const { data: allTeamLeads } = await supabase
         .from('surveyors')
@@ -363,6 +359,10 @@ export default function MasterReports() {
           else if (pStat === 'warm') telecallerMap[tcId].callsToWarm = (telecallerMap[tcId].callsToWarm || 0) + 1;
           else if (pStat === 'hot') telecallerMap[tcId].callsToHot = (telecallerMap[tcId].callsToHot || 0) + 1;
           else if (pStat === 'skipped') telecallerMap[tcId].callsToSkipped = (telecallerMap[tcId].callsToSkipped || 0) + 1;
+          else if (pStat === 'immediate') telecallerMap[tcId].callsToImmediate = (telecallerMap[tcId].callsToImmediate || 0) + 1;
+          else if (pStat === 'wrong_number') telecallerMap[tcId].callsToWrongNumber = (telecallerMap[tcId].callsToWrongNumber || 0) + 1;
+          else if (pStat === 'reverted_to_tl') telecallerMap[tcId].callsToReverted = (telecallerMap[tcId].callsToReverted || 0) + 1;
+          else if (pStat === 'closed') telecallerMap[tcId].callsToClosed = (telecallerMap[tcId].callsToClosed || 0) + 1;
         }
       });
 
@@ -374,7 +374,6 @@ export default function MasterReports() {
       setDataSurveyors(Object.values(survMap).sort((a,b) => b.submissions - a.submissions));
       setDataTelecallers(Object.values(telecallerMap).sort((a,b) => b.assigned - a.assigned));
       setDataTeamLeads(Object.values(teamLeadMap).sort((a,b) => b.assigned - a.assigned));
-      setDataCallLogs(Object.values(callLogMap).sort((a,b) => b.totalCalls - a.totalCalls));
       
       setMasterDump(rawDump.sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime()));
 
@@ -770,14 +769,14 @@ export default function MasterReports() {
                     <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.callsToCold || 0} / {d.cold}</td>
                     <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.callsToWarm || 0} / {d.warm}</td>
                     <td className="py-3 px-4 text-center text-accent-red font-medium">{d.callsToHot || 0} / {d.hot}</td>
-                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.immediate}</td>
+                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.callsToImmediate || 0} / {d.immediate}</td>
                     <td className="py-3 px-4 text-center text-text-muted">{d.callsToSkipped || 0} / {d.skipped}</td>
-                    <td className="py-3 px-4 text-center text-orange-400">{d.wrongNumber}</td>
-                    <td className="py-3 px-4 text-center text-purple-400 font-medium">{d.reverted}</td>
-                    <td className="py-3 px-4 text-center text-accent-green font-bold">{d.closed}</td>
+                    <td className="py-3 px-4 text-center text-orange-400">{d.callsToWrongNumber || 0} / {d.wrongNumber}</td>
+                    <td className="py-3 px-4 text-center text-purple-400 font-medium">{d.callsToReverted || 0} / {d.reverted}</td>
+                    <td className="py-3 px-4 text-center text-accent-green font-bold">{d.callsToClosed || 0} / {d.closed}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={8} className="py-8 text-center text-text-muted">No telecaller data available.</td></tr>
+                  <tr><td colSpan={11} className="py-8 text-center text-text-muted">No telecaller data available.</td></tr>
                 )}
               </tbody>
             </table>
