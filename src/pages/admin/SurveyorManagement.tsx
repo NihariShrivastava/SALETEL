@@ -16,6 +16,8 @@ export default function SurveyorManagement() {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   
   const [surveyors, setSurveyors] = useState<SurveyorExtended[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
@@ -220,6 +222,9 @@ export default function SurveyorManagement() {
     const matchesRole = roleFilter === 'all' || s.user_role_id === roleFilter;
     return matchesSearch && matchesRole;
   });
+
+  const totalPages = Math.ceil(filteredSurveyors.length / itemsPerPage);
+  const currentItems = filteredSurveyors.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-6">
@@ -458,7 +463,7 @@ export default function SurveyorManagement() {
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <select 
                 value={roleFilter}
-                onChange={e => setRoleFilter(e.target.value)}
+                onChange={e => { setRoleFilter(e.target.value); setCurrentPage(1); }}
                 className="bg-bg-primary border border-bg-border text-text-secondary text-xs rounded-lg px-3 py-2 focus:border-accent-blue focus:outline-none"
               >
                 <option value="all">All Roles</option>
@@ -473,14 +478,14 @@ export default function SurveyorManagement() {
                   placeholder="Search users..."
                   className="w-full bg-bg-primary border border-bg-border rounded-lg pl-9 pr-3 py-2 text-white text-sm"
                   value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
+                  onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                 />
               </div>
             </div>
           </div>
 
-          <Card className="p-0 overflow-hidden">
-            <div className="overflow-x-auto">
+          <Card className="p-0 overflow-hidden flex flex-col">
+            <div className="overflow-x-auto flex-1">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="bg-bg-primary/50 text-text-muted text-[10px] uppercase tracking-widest border-b border-bg-border">
@@ -491,7 +496,7 @@ export default function SurveyorManagement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSurveyors.map((surv) => (
+                  {currentItems.map((surv) => (
                     <tr key={surv.id} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50">
                       <td className="py-4 px-5">
                         <div className="flex items-center gap-3">
@@ -557,7 +562,7 @@ export default function SurveyorManagement() {
                       </td>
                     </tr>
                   ))}
-                  {filteredSurveyors.length === 0 && (
+                  {currentItems.length === 0 && (
                     <tr>
                       <td colSpan={4} className="py-8 text-center text-text-muted italic">No users found.</td>
                     </tr>
@@ -565,6 +570,30 @@ export default function SurveyorManagement() {
                 </tbody>
               </table>
             </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-bg-border bg-bg-primary shrink-0">
+                <div className="text-sm text-text-muted">
+                  Showing <span className="text-white font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-white font-medium">{Math.min(currentPage * itemsPerPage, filteredSurveyors.length)}</span> of <span className="text-white font-medium">{filteredSurveyors.length}</span> results
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       </div>
