@@ -82,6 +82,8 @@ export default function MasterReports() {
   
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [masterDump, setMasterDump] = useState<any[]>([]);
+  const [masterDumpPage, setMasterDumpPage] = useState(1);
+  const masterDumpItemsPerPage = 25;
   const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
@@ -116,6 +118,11 @@ export default function MasterReports() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    setMasterDumpPage(1);
+  }, [filterDomain, filterFormStatus, filterLeadStatus, globalStartDate, globalEndDate]);
+  
   const handleClearDates = () => {
     setGlobalStartDate('');
     setGlobalEndDate('');
@@ -809,8 +816,10 @@ export default function MasterReports() {
                         </tr>
                       );
                     }
+                    const totalPages = Math.ceil(filteredDump.length / masterDumpItemsPerPage);
+                    const currentItems = filteredDump.slice((masterDumpPage - 1) * masterDumpItemsPerPage, masterDumpPage * masterDumpItemsPerPage);
                     
-                    return filteredDump.map((sub, i) => (
+                    return currentItems.map((sub, i) => (
                     <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => setSelectedSub(sub._raw)}>
                       <td className="py-3 px-4 text-white font-medium">{sub.ID}</td>
                       <td className="py-3 px-4 text-text-secondary">{sub.Date}</td>
@@ -869,6 +878,38 @@ export default function MasterReports() {
               </tbody>
             </table>
           </div>
+          {(() => {
+            const filteredDump = masterDump.filter(d => 
+              (filterDomain === 'all' || d.Domain === filterDomain) &&
+              (filterFormStatus === 'all' || d.Status === filterFormStatus) &&
+              (filterLeadStatus === 'all' || d['Lead Status'] === filterLeadStatus)
+            );
+            const totalPages = Math.ceil(filteredDump.length / masterDumpItemsPerPage);
+            if (totalPages <= 1) return null;
+            return (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-bg-border bg-bg-primary shrink-0">
+                <div className="text-sm text-text-muted">
+                  Showing <span className="text-white font-medium">{(masterDumpPage - 1) * masterDumpItemsPerPage + 1}</span> to <span className="text-white font-medium">{Math.min(masterDumpPage * masterDumpItemsPerPage, filteredDump.length)}</span> of <span className="text-white font-medium">{filteredDump.length}</span> results
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setMasterDumpPage(p => Math.max(1, p - 1))}
+                    disabled={masterDumpPage === 1}
+                    className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    onClick={() => setMasterDumpPage(p => Math.min(totalPages, p + 1))}
+                    disabled={masterDumpPage === totalPages}
+                    className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </Card>
       ) : activeTab === 'teamlead' ? (
         <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
