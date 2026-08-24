@@ -450,18 +450,12 @@ export default function MasterReports() {
       sheetName = 'By Surveyor';
     } else if (activeTab === 'teamlead') {
       dataToExport = dataTeamLeads.map(d => ({
-        'Team Lead': d.teamLeadName,
-        'Telecaller': d.telecallerName,
-        'Total Assigned': d.assigned,
-        'New': d.newLeads,
-        'Cold': d.cold,
-        'Warm': d.warm,
-        'Hot': d.hot,
-        'Immediate': d.immediate,
-        'Skipped': d.skipped,
-        'Wrong Number': d.wrongNumber,
-        'Reverted': d.reverted,
-        'Closed': d.closed
+        'Team Lead': d.name,
+        'Total Entries Managed': d.totalEntries,
+        'Assigned to TC': d.assigned,
+        'Immediate Action': d.immediate,
+        'Closed': d.closed,
+        'Deleted': d.deleted
       }));
       sheetName = 'By Team Lead';
     } else if (activeTab === 'telecaller') {
