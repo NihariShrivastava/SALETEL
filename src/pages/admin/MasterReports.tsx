@@ -112,7 +112,7 @@ export default function MasterReports() {
 
   useEffect(() => {
     fetchData();
-  }, [globalStartDate, globalEndDate]);
+  }, []);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -557,6 +557,12 @@ export default function MasterReports() {
               value={globalEndDate}
               onChange={(e) => setGlobalEndDate(e.target.value)}
             />
+            <button
+              onClick={() => fetchData()}
+              className="ml-2 px-3 py-1 bg-accent-blue/10 text-accent-blue hover:bg-accent-blue hover:text-white text-xs font-semibold rounded-md transition-colors"
+            >
+              Apply
+            </button>
           </div>
           <Button onClick={handleOpenTemplateModal} className="bg-accent-blue hover:bg-accent-blue/90 text-white border-transparent shadow-lg shadow-accent-blue/20">
             <PieChart className="w-4 h-4 mr-2" />
