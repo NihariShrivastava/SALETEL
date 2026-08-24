@@ -14,6 +14,8 @@ export default function Submissions() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
   
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [domains, setDomains] = useState<any[]>([]);
@@ -64,6 +66,9 @@ export default function Submissions() {
     return matchesSearch && matchesDomain && matchesStatus;
   });
 
+  const totalPages = Math.ceil(filteredSubmissions.length / itemsPerPage);
+  const currentItems = filteredSubmissions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   if (isLoading) {
     return (
       <div className="flex h-[calc(100vh-10rem)] items-center justify-center">
@@ -87,7 +92,7 @@ export default function Submissions() {
               <select 
                 className="bg-bg-primary border border-bg-border text-text-secondary text-xs rounded-lg px-3 py-2 focus:border-accent-blue focus:outline-none"
                 value={selectedDomain}
-                onChange={e => setSelectedDomain(e.target.value)}
+                onChange={e => { setSelectedDomain(e.target.value); setCurrentPage(1); }}
               >
                 <option value="all">All Domains</option>
                 {domains.map(d => (
@@ -97,7 +102,7 @@ export default function Submissions() {
               <select 
                 className="bg-bg-primary border border-bg-border text-text-secondary text-xs rounded-lg px-3 py-2 focus:border-accent-blue focus:outline-none"
                 value={selectedStatus}
-                onChange={e => setSelectedStatus(e.target.value)}
+                onChange={e => { setSelectedStatus(e.target.value); setCurrentPage(1); }}
               >
                 <option value="all">All Statuses</option>
                 <option value="submitted">Submitted</option>
@@ -111,7 +116,7 @@ export default function Submissions() {
                 placeholder="Search surveyor or ID..."
                 className="w-full bg-bg-primary border border-bg-border rounded-lg pl-9 pr-3 py-2 text-white text-sm focus:border-accent-blue focus:outline-none"
                 value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
+                onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               />
             </div>
           </div>
@@ -129,7 +134,7 @@ export default function Submissions() {
                 </tr>
               </thead>
               <tbody>
-                {filteredSubmissions.length > 0 ? filteredSubmissions.map((sub, i) => (
+                {currentItems.length > 0 ? currentItems.map((sub, i) => (
                   <tr 
                     key={i} 
                     className={cn(
@@ -170,6 +175,30 @@ export default function Submissions() {
               </tbody>
             </table>
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-bg-border bg-bg-primary shrink-0">
+              <div className="text-sm text-text-muted">
+                Showing <span className="text-white font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-white font-medium">{Math.min(currentPage * itemsPerPage, filteredSubmissions.length)}</span> of <span className="text-white font-medium">{filteredSubmissions.length}</span> results
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                >
+                  Previous
+                </button>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-50 text-xs px-3 py-1 rounded-md transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
 
