@@ -39,6 +39,11 @@ export default function TeamLeadDashboard() {
   const [slidePage, setSlidePage] = useState(1);
   const itemsPerPage = 20;
 
+  const [teamTelecallers, setTeamTelecallers] = useState<any[]>([]);
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [reassignTo, setReassignTo] = useState<string>('');
+  const [isReassigning, setIsReassigning] = useState(false);
+
   useEffect(() => {
     setSlidePage(1);
   }, [activeSlide, selectedSurveyor, selectedStatus]);
@@ -111,6 +116,35 @@ export default function TeamLeadDashboard() {
               sub.telecaller = telecallersData.find(t => t.id === sub.telecaller_id);
             }
           });
+        }
+      }
+
+      // Fetch fresh assigned users for this TL and combine with any existing telecaller IDs
+      const { data: tlData } = await supabase
+        .from('surveyors')
+        .select('assigned_users')
+        .eq('id', user.id)
+        .single();
+        
+      const currentAssignedUsers = tlData?.assigned_users || user.assigned_users || [];
+      const allPotentialTcIds = Array.from(new Set([...currentAssignedUsers, ...uniqueTelecallerIds]));
+
+      if (allPotentialTcIds.length > 0) {
+        const { data: potentialTcs } = await supabase
+          .from('surveyors')
+          .select('id, full_name, username, user_role:user_roles(name)')
+          .in('id', allPotentialTcIds);
+          
+        if (potentialTcs) {
+          // Include if they have the telecaller role, OR if they are already in uniqueTelecallerIds (meaning they have leads assigned)
+          const tcs = potentialTcs.filter(u => 
+            u.user_role?.name?.toLowerCase().includes('telecaller') || 
+            uniqueTelecallerIds.includes(u.id)
+          );
+          
+          // Remove duplicates if any (though .in and the above filter shouldn't produce duplicates, just safe)
+          const uniqueTcs = Array.from(new Map(tcs.map(item => [item.id, item])).values());
+          setTeamTelecallers(uniqueTcs);
         }
       }
 
@@ -247,6 +281,28 @@ export default function TeamLeadDashboard() {
     }
   };
 
+  const handleReassignLeads = async () => {
+    if (!reassignTo || selectedLeads.length === 0) return;
+    setIsReassigning(true);
+    try {
+      const { error } = await supabase
+        .from('submissions')
+        .update({ telecaller_id: reassignTo })
+        .in('id', selectedLeads);
+        
+      if (error) throw error;
+      toast.success(`${selectedLeads.length} leads reassigned successfully`);
+      setSelectedLeads([]);
+      setReassignTo('');
+      fetchSubmissions();
+    } catch (err) {
+      console.error('Failed to reassign leads', err);
+      toast.error('Failed to reassign leads');
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {immediateLeads.length > 0 && (
@@ -376,6 +432,29 @@ export default function TeamLeadDashboard() {
             {activeSlide === 6 && <Badge variant="red">{deletedLeads.length} Leads</Badge>}
           </div>
           <div className="flex items-center gap-2">
+            {activeSlide === 1 && selectedLeads.length > 0 && (
+              <div className="flex items-center gap-2 mr-4">
+                <span className="text-xs text-accent-blue font-medium">{selectedLeads.length} selected</span>
+                <select 
+                  value={reassignTo}
+                  onChange={(e) => setReassignTo(e.target.value)}
+                  className="bg-bg-primary border border-bg-border rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-accent-blue min-w-[150px]"
+                >
+                  <option value="">Select Telecaller</option>
+                  {teamTelecallers.map(tc => (
+                    <option key={tc.id} value={tc.id}>{tc.full_name || tc.username}</option>
+                  ))}
+                </select>
+                <Button 
+                  size="sm" 
+                  onClick={handleReassignLeads} 
+                  disabled={!reassignTo || isReassigning}
+                  className="bg-accent-blue text-white hover:bg-blue-600 border-none py-1 h-auto"
+                >
+                  {isReassigning ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Reassign'}
+                </Button>
+              </div>
+            )}
             <Button variant="outline" size="sm" onClick={prevSlide} className="border-bg-border text-text-secondary hover:text-white p-2">
               <ChevronLeft className="w-5 h-5" />
             </Button>
@@ -446,6 +525,20 @@ export default function TeamLeadDashboard() {
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="bg-bg-primary border-b border-bg-border text-text-muted text-[10px] uppercase tracking-widest">
+                    <th className="py-3 px-4 font-semibold w-10">
+                      <input 
+                        type="checkbox" 
+                        checked={paginatedAssignedLeadsLogs.length > 0 && selectedLeads.length === paginatedAssignedLeadsLogs.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedLeads(paginatedAssignedLeadsLogs.map(l => l.id));
+                          } else {
+                            setSelectedLeads([]);
+                          }
+                        }}
+                        className="rounded border-bg-border bg-bg-secondary focus:ring-accent-blue focus:ring-offset-bg-primary cursor-pointer"
+                      />
+                    </th>
                     <th className="py-3 px-4 font-semibold">Form / Lead</th>
                     <th className="py-3 px-4 font-semibold">Assigned To (TC)</th>
                     <th className="py-3 px-4 font-semibold">Submitted By</th>
@@ -456,6 +549,20 @@ export default function TeamLeadDashboard() {
                 <tbody>
                   {paginatedAssignedLeadsLogs.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
+                      <td className="py-3 px-4">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedLeads.includes(lead.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedLeads([...selectedLeads, lead.id]);
+                            } else {
+                              setSelectedLeads(selectedLeads.filter(id => id !== lead.id));
+                            }
+                          }}
+                          className="rounded border-bg-border bg-bg-secondary focus:ring-accent-blue focus:ring-offset-bg-primary cursor-pointer"
+                        />
+                      </td>
                       <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unknown'}</td>
                       <td className="py-3 px-4 text-text-secondary">{lead.surveyor?.full_name || lead.surveyor?.username}</td>
@@ -471,7 +578,7 @@ export default function TeamLeadDashboard() {
                   ))}
                   {assignedLeadsLogs.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-text-muted italic">No leads assigned yet.</td>
+                      <td colSpan={6} className="py-8 text-center text-text-muted italic">No leads assigned yet.</td>
                     </tr>
                   )}
                 </tbody>
