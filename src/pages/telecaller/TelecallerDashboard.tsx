@@ -15,10 +15,14 @@ export default function TelecallerDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState<any | null>(null);
   
-  // Filters
+  // Pagination & Filters
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [activeTab, setActiveTab] = useState<'actionable' | 'closed'>('actionable');
+  const [activeTab, setActiveTab] = useState<'actionable' | 'skipped' | 'changed' | 'closed'>('actionable');
+  const [changedDateFilter, setChangedDateFilter] = useState('');
 
   const fetchLeads = async () => {
     if (!user) return;
@@ -107,7 +111,7 @@ export default function TelecallerDashboard() {
     const diff = differenceInDays(new Date(), baseDate);
 
     if (diff >= targetDays) {
-      return `Pending action for ${diff} days (SLA: ${targetDays} day${targetDays > 1 ? 's' : ''})`;
+      return `It has been ${diff} days, call again! (Target: ${targetDays} day${targetDays > 1 ? 's' : ''})`;
     }
     return null;
   };
@@ -124,7 +128,10 @@ export default function TelecallerDashboard() {
   // Organize Leads
   const processedLeads = useMemo(() => {
     const actionable: any[] = [];
+    const skippedList: any[] = [];
+    const changed: any[] = [];
     const closed: any[] = [];
+    const now = new Date();
 
     leads.forEach(lead => {
       // Check if it matches search
@@ -138,13 +145,30 @@ export default function TelecallerDashboard() {
       if (status === 'deleted') return;
       
       const matchesFilter = filterStatus === 'all' || status === filterStatus;
-
       if (!matchesSearch || !matchesFilter) return;
+
+      // Filter by Date specifically for Changed Leads Tab
+      if (changedDateFilter && ['hot', 'warm', 'cold'].includes(status)) {
+        const leadDate = new Date(lead.lead_status_updated_at || lead.submitted_at).toISOString().split('T')[0];
+        if (leadDate !== changedDateFilter) return;
+      }
 
       if (['immediate', 'reverted_to_tl', 'wrong_number', 'closed'].includes(status)) {
         closed.push(lead);
-      } else {
+      } else if (status === 'new') {
         actionable.push(lead);
+      } else if (status === 'skipped') {
+        skippedList.push(lead);
+      } else if (['hot', 'warm', 'cold'].includes(status)) {
+        const targetDays = slaSettings[status] || 99;
+        const baseDate = new Date(lead.lead_status_updated_at || lead.submitted_at);
+        const diff = differenceInDays(now, baseDate);
+        
+        if (diff >= targetDays) {
+          actionable.push(lead); // SLA breached, move back to Actionable Queue
+        } else {
+          changed.push(lead); // SLA not met, keep in Changed Pipeline
+        }
       }
     });
 
@@ -163,10 +187,28 @@ export default function TelecallerDashboard() {
       return dB - dA;
     });
 
-    return { actionable, closed };
-  }, [leads, searchTerm, filterStatus]);
+    // Sort Changed by date
+    changed.sort((a, b) => {
+      const dA = new Date(a.lead_status_updated_at || a.submitted_at).getTime();
+      const dB = new Date(b.lead_status_updated_at || b.submitted_at).getTime();
+      return dB - dA;
+    });
 
-  const displayLeads = activeTab === 'actionable' ? processedLeads.actionable : processedLeads.closed;
+    return { actionable, skippedList, changed, closed };
+  }, [leads, searchTerm, filterStatus, changedDateFilter, slaSettings]);
+
+  const displayLeads = activeTab === 'actionable' ? processedLeads.actionable 
+                     : activeTab === 'skipped' ? processedLeads.skippedList
+                     : activeTab === 'changed' ? processedLeads.changed 
+                     : processedLeads.closed;
+
+  // Reset pagination when filters or tabs change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, filterStatus, searchTerm, changedDateFilter]);
+
+  const totalPages = Math.ceil(displayLeads.length / itemsPerPage);
+  const currentItems = displayLeads.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const renderStatusBadge = (status: string) => {
     switch (status) {
@@ -204,7 +246,23 @@ export default function TelecallerDashboard() {
                 activeTab === 'actionable' ? 'bg-accent-blue text-white shadow' : 'text-text-secondary hover:text-white'
               }`}
             >
-              Actionable Leads ({processedLeads.actionable.length})
+              New Leads ({processedLeads.actionable.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('skipped')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'skipped' ? 'bg-accent-blue text-white shadow' : 'text-text-secondary hover:text-white'
+              }`}
+            >
+              Skipped ({processedLeads.skippedList.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('changed')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'changed' ? 'bg-accent-blue text-white shadow' : 'text-text-secondary hover:text-white'
+              }`}
+            >
+              Leads Changed ({processedLeads.changed.length})
             </button>
             <button
               onClick={() => setActiveTab('closed')}
@@ -232,6 +290,15 @@ export default function TelecallerDashboard() {
         </div>
         
         <div className="flex items-center gap-3 w-full sm:w-auto">
+          {activeTab === 'changed' && (
+            <input 
+              type="date" 
+              value={changedDateFilter}
+              onChange={(e) => setChangedDateFilter(e.target.value)}
+              className="w-full sm:w-40 bg-bg-secondary border border-bg-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent-blue [color-scheme:dark]"
+              title="Filter by status updated date"
+            />
+          )}
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
@@ -240,11 +307,20 @@ export default function TelecallerDashboard() {
             <option value="all">All Statuses</option>
             {activeTab === 'actionable' ? (
               <>
+                <option value="new">New</option>
+                <option value="hot">Hot (Callback)</option>
+                <option value="warm">Warm (Callback)</option>
+                <option value="cold">Cold (Callback)</option>
+              </>
+            ) : activeTab === 'skipped' ? (
+              <>
+                <option value="skipped">Skipped</option>
+              </>
+            ) : activeTab === 'changed' ? (
+              <>
                 <option value="hot">Hot</option>
                 <option value="warm">Warm</option>
                 <option value="cold">Cold</option>
-                <option value="new">New</option>
-                <option value="skipped">Skipped</option>
               </>
             ) : (
               <>
@@ -276,7 +352,7 @@ export default function TelecallerDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {displayLeads.map(lead => {
+                {currentItems.map(lead => {
                   const slaWarning = getSLAWarning(lead);
                   
                   return (
@@ -326,6 +402,33 @@ export default function TelecallerDashboard() {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+        
+        {/* Pagination Controls */}
+        {!isLoading && totalPages > 1 && (
+          <div className="p-4 border-t border-bg-border flex items-center justify-between">
+            <div className="text-sm text-text-muted">
+              Showing <span className="text-white font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-white font-medium">{Math.min(currentPage * itemsPerPage, displayLeads.length)}</span> of <span className="text-white font-medium">{displayLeads.length}</span> results
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         )}
       </Card>

@@ -15,7 +15,7 @@ export default function Submissions() {
   const [selectedDomain, setSelectedDomain] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 25;
+  const itemsPerPage = 20;
   
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [domains, setDomains] = useState<any[]>([]);

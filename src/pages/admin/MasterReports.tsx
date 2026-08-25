@@ -83,7 +83,7 @@ export default function MasterReports() {
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [masterDump, setMasterDump] = useState<any[]>([]);
   const [masterDumpPage, setMasterDumpPage] = useState(1);
-  const masterDumpItemsPerPage = 25;
+  const masterDumpItemsPerPage = 20;
   const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
@@ -483,6 +483,20 @@ export default function MasterReports() {
         'Closed': d.closed
       }));
       sheetName = 'By Telecaller';
+    } else if (activeTab === 'outcome') {
+      dataToExport = dataTelecallers.map(d => ({
+        'Telecaller': d.name,
+        'Total Assigned': d.assigned,
+        'New': d.newLeads,
+        'Hot': d.hot,
+        'Warm': d.warm,
+        'Cold': d.cold,
+        'Immediate': d.immediate,
+        'Skipped': d.skipped,
+        'Wrong Number': d.wrongNumber,
+        'Reverted': d.reverted
+      }));
+      sheetName = 'Outcome By Telecaller';
     } else {
       dataToExport = masterDump.map(({ _raw, ...rest }) => rest);
       sheetName = 'Master Dump';
@@ -536,6 +550,7 @@ export default function MasterReports() {
     { id: 'person', label: 'By Surveyor', icon: Filter },
     { id: 'teamlead', label: 'By Team Lead', icon: Building2 },
     { id: 'telecaller', label: 'By Telecaller', icon: PhoneCall },
+    { id: 'outcome', label: 'Outcome By Telecaller', icon: PieChart },
     { id: 'master', label: 'Master Dump', icon: Database },
   ];
 
@@ -572,11 +587,12 @@ export default function MasterReports() {
       );
     }
 
-    if (activeTab === 'telecaller') {
+    if (activeTab === 'telecaller' || activeTab === 'outcome') {
       const totalTCs = dataTelecallers.length;
       const totalAssigned = dataTelecallers.reduce((acc, curr) => acc + curr.assigned, 0);
       const totalImmediate = dataTelecallers.reduce((acc, curr) => acc + curr.immediate, 0);
       const totalClosed = dataTelecallers.reduce((acc, curr) => acc + curr.closed, 0);
+      const totalNew = dataTelecallers.reduce((acc, curr) => acc + curr.newLeads, 0);
 
       return (
         <>
@@ -588,7 +604,7 @@ export default function MasterReports() {
           <Card className="p-4">
             <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Assigned Leads</div>
             <div className="text-2xl font-bold text-white tracking-tight">{totalAssigned.toLocaleString()}</div>
-            <div className="text-xs text-text-muted mt-1 flex items-center">Total leads pushed to TCs</div>
+            <div className="text-xs text-text-muted mt-1 flex items-center">Total leads in date range</div>
           </Card>
           <Card className="p-4">
             <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Immediate Status</div>
@@ -596,9 +612,11 @@ export default function MasterReports() {
             <div className="text-xs text-text-muted mt-1 flex items-center">Leads needing immediate action</div>
           </Card>
           <Card className="p-4">
-            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Successfully Closed</div>
-            <div className="text-2xl font-bold text-accent-green tracking-tight">{totalClosed.toLocaleString()}</div>
-            <div className="text-xs text-text-muted mt-1 flex items-center">Leads closed by telecallers</div>
+            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">{activeTab === 'outcome' ? 'Pending (New)' : 'Successfully Closed'}</div>
+            <div className={`text-2xl font-bold tracking-tight ${activeTab === 'outcome' ? 'text-white' : 'text-accent-green'}`}>
+              {activeTab === 'outcome' ? totalNew.toLocaleString() : totalClosed.toLocaleString()}
+            </div>
+            <div className="text-xs text-text-muted mt-1 flex items-center">{activeTab === 'outcome' ? 'Leads not yet called' : 'Leads closed by telecallers'}</div>
           </Card>
         </>
       );
@@ -1057,6 +1075,49 @@ export default function MasterReports() {
                   </tr>
                 )) : (
                   <tr><td colSpan={11} className="py-8 text-center text-text-muted">No telecaller data available.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : activeTab === 'outcome' ? (
+        <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
+          <div className="p-5 border-b border-bg-border">
+            <h3 className="text-sm font-semibold text-white">Outcome By Telecaller</h3>
+            <p className="text-xs text-text-muted mt-1">Review the strict status counts of leads assigned in the selected date range.</p>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest">
+                  <th className="py-3 px-4 font-semibold">Telecaller</th>
+                  <th className="py-3 px-4 font-semibold text-center">Total Assigned</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">New</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Hot</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-yellow">Warm</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Cold</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
+                  <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped</th>
+                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Wrong No.</th>
+                  <th className="py-3 px-4 font-semibold text-center text-purple-400">Reverted</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataTelecallers.length > 0 ? dataTelecallers.map((d, i) => (
+                  <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors">
+                    <td className="py-3 px-4 text-white font-medium">{d.name}</td>
+                    <td className="py-3 px-4 text-center font-bold text-white">{d.assigned.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center text-accent-green font-medium">{d.newLeads}</td>
+                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
+                    <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
+                    <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.cold}</td>
+                    <td className="py-3 px-4 text-center text-accent-red font-medium">{d.immediate}</td>
+                    <td className="py-3 px-4 text-center text-text-muted">{d.skipped}</td>
+                    <td className="py-3 px-4 text-center text-orange-400">{d.wrongNumber}</td>
+                    <td className="py-3 px-4 text-center text-purple-400 font-medium">{d.reverted}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={10} className="py-8 text-center text-text-muted">No outcome data available.</td></tr>
                 )}
               </tbody>
             </table>
