@@ -137,10 +137,10 @@ export default function TeamLeadDashboard() {
           
         if (potentialTcs) {
           // Include if they have the telecaller role, OR if they are already in uniqueTelecallerIds (meaning they have leads assigned)
-          const tcs = potentialTcs.filter(u => 
-            u.user_role?.name?.toLowerCase().includes('telecaller') || 
-            uniqueTelecallerIds.includes(u.id)
-          );
+          const tcs = potentialTcs.filter(u => {
+            const roleName = Array.isArray(u.user_role) ? u.user_role[0]?.name : (u.user_role as any)?.name;
+            return roleName?.toLowerCase().includes('telecaller') || uniqueTelecallerIds.includes(u.id);
+          });
           
           // Remove duplicates if any (though .in and the above filter shouldn't produce duplicates, just safe)
           const uniqueTcs = Array.from(new Map(tcs.map(item => [item.id, item])).values());
