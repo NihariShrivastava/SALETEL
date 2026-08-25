@@ -487,7 +487,8 @@ export default function MasterReports() {
       dataToExport = dataTelecallers.map(d => ({
         'Telecaller': d.name,
         'Total Assigned': d.assigned,
-        'New': d.newLeads,
+        'Pending': d.newLeads,
+        'Done': d.hot + d.warm + d.cold + d.immediate + d.skipped + d.wrongNumber + d.reverted,
         'Hot': d.hot,
         'Warm': d.warm,
         'Cold': d.cold,
@@ -1092,7 +1093,8 @@ export default function MasterReports() {
                 <tr className="text-text-muted text-[10px] uppercase tracking-widest">
                   <th className="py-3 px-4 font-semibold">Telecaller</th>
                   <th className="py-3 px-4 font-semibold text-center">Total Assigned</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-green">New</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">Pending</th>
+                  <th className="py-3 px-4 font-semibold text-center text-white">Done</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-red">Hot</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-yellow">Warm</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-blue">Cold</th>
@@ -1108,6 +1110,7 @@ export default function MasterReports() {
                     <td className="py-3 px-4 text-white font-medium">{d.name}</td>
                     <td className="py-3 px-4 text-center font-bold text-white">{d.assigned.toLocaleString()}</td>
                     <td className="py-3 px-4 text-center text-accent-green font-medium">{d.newLeads}</td>
+                    <td className="py-3 px-4 text-center font-bold text-white">{d.hot + d.warm + d.cold + d.immediate + d.skipped + d.wrongNumber + d.reverted}</td>
                     <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
                     <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
                     <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.cold}</td>
