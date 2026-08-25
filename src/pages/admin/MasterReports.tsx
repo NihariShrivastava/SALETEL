@@ -463,7 +463,6 @@ export default function MasterReports() {
         'Team Lead': d.name,
         'Total Entries Managed': d.totalEntries,
         'Assigned to TC': d.assigned,
-        'Immediate Action': d.immediate,
         'Closed': d.closed,
         'Deleted': d.deleted
       }));
@@ -488,7 +487,7 @@ export default function MasterReports() {
         'Telecaller': d.name,
         'Total Assigned': d.assigned,
         'Pending': d.newLeads,
-        'Done': d.hot + d.warm + d.cold + d.immediate + d.skipped + d.wrongNumber + d.reverted,
+        'Done': d.hot + d.warm + d.cold + d.immediate + d.skipped + d.wrongNumber + d.reverted + d.closed,
         'Hot': d.hot,
         'Warm': d.warm,
         'Cold': d.cold,
@@ -943,7 +942,6 @@ export default function MasterReports() {
                   <th className="py-3 px-4 font-semibold">Team Lead</th>
                   <th className="py-3 px-4 font-semibold text-center">Total Entries</th>
                   <th className="py-3 px-4 font-semibold text-center">Assigned to TC</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-green">Closed</th>
                   <th className="py-3 px-4 font-semibold text-center text-red-500">Deleted</th>
                 </tr>
@@ -965,7 +963,6 @@ export default function MasterReports() {
                       </td>
                       <td className="py-3 px-4 text-center font-bold text-white">{d.totalEntries.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-text-secondary">{d.assigned.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-red">{d.immediate.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-accent-green">{d.closed.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-red-500">{d.deleted.toLocaleString()}</td>
                     </tr>
@@ -979,7 +976,6 @@ export default function MasterReports() {
                                 <tr className="text-text-muted border-b border-bg-border/50 uppercase tracking-widest text-[9px]">
                                   <th className="py-2 px-3 font-semibold">Telecaller Name</th>
                                   <th className="py-2 px-3 font-semibold text-center">Assigned Leads</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-red">Immediate</th>
                                   <th className="py-2 px-3 font-semibold text-center text-accent-green">Closed</th>
                                   <th className="py-2 px-3 font-semibold text-center text-red-500">Deleted</th>
                                 </tr>
@@ -989,7 +985,6 @@ export default function MasterReports() {
                                   <tr key={tcIdx} className="border-b border-bg-border/50 last:border-0 hover:bg-bg-hover/30">
                                     <td className="py-2 px-3 text-white font-medium">{tc.name}</td>
                                     <td className="py-2 px-3 text-center text-text-secondary font-medium">{tc.assigned}</td>
-                                    <td className="py-2 px-3 text-center text-accent-red font-medium">{tc.immediate}</td>
                                     <td className="py-2 px-3 text-center text-accent-green font-medium">{tc.closed}</td>
                                     <td className="py-2 px-3 text-center text-red-500 font-medium">{tc.deleted}</td>
                                   </tr>
@@ -1110,7 +1105,7 @@ export default function MasterReports() {
                     <td className="py-3 px-4 text-white font-medium">{d.name}</td>
                     <td className="py-3 px-4 text-center font-bold text-white">{d.assigned.toLocaleString()}</td>
                     <td className="py-3 px-4 text-center text-accent-green font-medium">{d.newLeads}</td>
-                    <td className="py-3 px-4 text-center font-bold text-white">{d.hot + d.warm + d.cold + d.immediate + d.skipped + d.wrongNumber + d.reverted}</td>
+                    <td className="py-3 px-4 text-center font-bold text-white">{d.hot + d.warm + d.cold + d.immediate + d.skipped + d.wrongNumber + d.reverted + d.closed}</td>
                     <td className="py-3 px-4 text-center text-accent-red font-medium">{d.hot}</td>
                     <td className="py-3 px-4 text-center text-accent-yellow font-medium">{d.warm}</td>
                     <td className="py-3 px-4 text-center text-accent-blue font-medium">{d.cold}</td>

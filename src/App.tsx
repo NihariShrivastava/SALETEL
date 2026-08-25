@@ -11,6 +11,7 @@ import SurveyorManagement from './pages/admin/SurveyorManagement';
 import CounterManagement from './pages/admin/CounterManagement';
 import Submissions from './pages/admin/Submissions';
 import MasterReports from './pages/admin/MasterReports';
+import LeadStatusCount from './pages/admin/LeadStatusCount';
 import CustomTemplateDashboard from './pages/admin/CustomTemplateDashboard';
 import SystemSettings from './pages/admin/SystemSettings';
 
@@ -75,6 +76,7 @@ function App() {
           <Route path="counters" element={<CounterManagement />} />
           <Route path="submissions" element={<Submissions />} />
           <Route path="reports" element={<MasterReports />} />
+          <Route path="lead-status" element={<LeadStatusCount />} />
           <Route path="settings" element={<SystemSettings />} />
         </Route>
         

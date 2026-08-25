@@ -19,6 +19,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { to: '/admin/counters', icon: CheckSquare, label: 'Counter Management' },
     { to: '/admin/surveyors', icon: UserCog, label: 'Role Management' },
     { to: '/admin/settings', icon: Settings, label: 'Telecaller Lead Setting' },
+    { to: '/admin/lead-status', icon: FileBarChart, label: 'Lead Status Count' },
     { to: '/admin/reports', icon: FileBarChart, label: 'Master Reports' },
   ];
 
