@@ -221,6 +221,16 @@ export default function MasterReports() {
       const surveyorToTlMap = new Map<string, {id: string, name: string}>();
       if (allTeamLeads) {
         allTeamLeads.forEach(tl => {
+          teamLeadMap[tl.id] = {
+            id: tl.id,
+            name: tl.full_name,
+            totalEntries: 0,
+            assigned: 0,
+            immediate: 0,
+            closed: 0,
+            deleted: 0,
+            telecallers: {}
+          };
           if (Array.isArray(tl.assigned_users)) {
             tl.assigned_users.forEach((surveyorId: string) => {
               surveyorToTlMap.set(surveyorId, { id: tl.id, name: tl.full_name });
@@ -229,16 +239,42 @@ export default function MasterReports() {
         });
       }
 
+      // Pre-fetch all telecallers to ensure they show up in the report even with 0 leads
+      const { data: allTelecallers } = await supabase
+        .from('surveyors')
+        .select('id, full_name, user_roles!inner(name)')
+        .ilike('user_roles.name', '%Telecaller%');
+
+      const tcNameMap = new Map<string, string>();
+      if (allTelecallers) {
+        allTelecallers.forEach((tc: any) => {
+          tcNameMap.set(tc.id, tc.full_name);
+          telecallerMap[tc.id] = {
+            id: tc.id,
+            name: tc.full_name,
+            assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+          };
+        });
+      }
+      
+      // Fallback for telecallers in submissions but not found above (e.g. deleted/changed roles)
       const tcIdsToFetch = new Set<string>();
       submissions.forEach(sub => {
-        if (sub.telecaller_id) tcIdsToFetch.add(sub.telecaller_id);
+        if (sub.telecaller_id && !tcNameMap.has(sub.telecaller_id)) tcIdsToFetch.add(sub.telecaller_id);
       });
-      const tcNameMap = new Map<string, string>();
       if (tcIdsToFetch.size > 0) {
         const { data: tcData } = await supabase.from('surveyors').select('id, full_name').in('id', Array.from(tcIdsToFetch));
-        tcData?.forEach(tc => tcNameMap.set(tc.id, tc.full_name));
+        tcData?.forEach(tc => {
+          tcNameMap.set(tc.id, tc.full_name);
+          if (!telecallerMap[tc.id]) {
+            telecallerMap[tc.id] = {
+              id: tc.id,
+              name: tc.full_name,
+              assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+            };
+          }
+        });
       }
-
       const callLogMap: Record<string, CallLogData> = {};
       callLogs.forEach((log: any) => {
         const tcId = log.telecaller_id;
