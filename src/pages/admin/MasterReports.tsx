@@ -156,11 +156,16 @@ export default function MasterReports() {
           surveyor_id
         `);
 
+      const parseLocalDate = (dateStr: string) => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
+      };
+
       if (start) {
-        subsQuery = subsQuery.gte('submitted_at', startOfDay(new Date(start)).toISOString());
+        subsQuery = subsQuery.gte('submitted_at', startOfDay(parseLocalDate(start)).toISOString());
       }
       if (end) {
-        subsQuery = subsQuery.lte('submitted_at', endOfDay(new Date(end)).toISOString());
+        subsQuery = subsQuery.lte('submitted_at', endOfDay(parseLocalDate(end)).toISOString());
       }
 
       const { data: subData, error: subError } = await subsQuery;
@@ -175,10 +180,10 @@ export default function MasterReports() {
         .select('*');
 
       if (start) {
-        logsQuery = logsQuery.gte('created_at', startOfDay(new Date(start)).toISOString());
+        logsQuery = logsQuery.gte('created_at', startOfDay(parseLocalDate(start)).toISOString());
       }
       if (end) {
-        logsQuery = logsQuery.lte('created_at', endOfDay(new Date(end)).toISOString());
+        logsQuery = logsQuery.lte('created_at', endOfDay(parseLocalDate(end)).toISOString());
       }
 
       const { data: logsData, error: logsError } = await logsQuery;

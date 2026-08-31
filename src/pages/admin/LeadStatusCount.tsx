@@ -77,11 +77,16 @@ export default function LeadStatusCount() {
           surveyors!surveyor_id(id, username, full_name)
         `);
 
+      const parseLocalDate = (dateStr: string) => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
+      };
+
       if (start) {
-        query = query.gte('submitted_at', startOfDay(new Date(start)).toISOString());
+        query = query.gte('submitted_at', startOfDay(parseLocalDate(start)).toISOString());
       }
       if (end) {
-        query = query.lte('submitted_at', endOfDay(new Date(end)).toISOString());
+        query = query.lte('submitted_at', endOfDay(parseLocalDate(end)).toISOString());
       }
 
       const { data, error } = await query;
