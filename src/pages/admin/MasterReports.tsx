@@ -48,6 +48,8 @@ interface TeamLeadData {
   totalEntries: number;
   assigned: number;
   immediate: number;
+  wrongNumber: number;
+  reverted: number;
   closed: number;
   deleted: number;
   telecallers: Record<string, {
@@ -55,6 +57,8 @@ interface TeamLeadData {
     name: string;
     assigned: number;
     immediate: number;
+    wrongNumber: number;
+    reverted: number;
     closed: number;
     deleted: number;
   }>;
@@ -162,10 +166,10 @@ export default function MasterReports() {
       };
 
       if (start) {
-        subsQuery = subsQuery.gte('submitted_at', startOfDay(parseLocalDate(start)).toISOString());
+        subsQuery = subsQuery.gte('lead_status_updated_at', startOfDay(parseLocalDate(start)).toISOString());
       }
       if (end) {
-        subsQuery = subsQuery.lte('submitted_at', endOfDay(parseLocalDate(end)).toISOString());
+        subsQuery = subsQuery.lte('lead_status_updated_at', endOfDay(parseLocalDate(end)).toISOString());
       }
 
       const { data: subData, error: subError } = await subsQuery;
@@ -215,8 +219,8 @@ export default function MasterReports() {
       
       const { data: allTeamLeads } = await supabase
         .from('surveyors')
-        .select('id, full_name, assigned_users')
-        .not('assigned_users', 'is', null);
+        .select('id, full_name, assigned_users, user_roles!inner(name)')
+        .ilike('user_roles.name', '%Team Lead%');
 
       const surveyorToTlMap = new Map<string, {id: string, name: string}>();
       if (allTeamLeads) {
@@ -227,6 +231,8 @@ export default function MasterReports() {
             totalEntries: 0,
             assigned: 0,
             immediate: 0,
+            wrongNumber: 0,
+            reverted: 0,
             closed: 0,
             deleted: 0,
             telecallers: {}
@@ -367,6 +373,8 @@ export default function MasterReports() {
               totalEntries: 0,
               assigned: 0,
               immediate: 0,
+              wrongNumber: 0,
+              reverted: 0,
               closed: 0,
               deleted: 0,
               telecallers: {}
@@ -384,6 +392,8 @@ export default function MasterReports() {
                 name: tcNameMap.get(sub.telecaller_id) || 'Unknown Telecaller',
                 assigned: 0,
                 immediate: 0,
+                wrongNumber: 0,
+                reverted: 0,
                 closed: 0,
                 deleted: 0
               };
@@ -394,11 +404,15 @@ export default function MasterReports() {
             if (bucket === 'immediate') tlTcMap.immediate += 1;
             else if (bucket === 'closed') tlTcMap.closed += 1;
             else if (bucket === 'deleted') tlTcMap.deleted += 1;
+            else if (bucket === 'wrong_number') tlTcMap.wrongNumber += 1;
+            else if (bucket === 'reverted') tlTcMap.reverted += 1;
           }
 
           if (bucket === 'immediate') tlMap.immediate += 1;
           else if (bucket === 'closed') tlMap.closed += 1;
           else if (bucket === 'deleted') tlMap.deleted += 1;
+          else if (bucket === 'wrong_number') tlMap.wrongNumber += 1;
+          else if (bucket === 'reverted') tlMap.reverted += 1;
         }
 
         let tName = 'Unknown';
@@ -983,6 +997,9 @@ export default function MasterReports() {
                   <th className="py-3 px-4 font-semibold">Team Lead</th>
                   <th className="py-3 px-4 font-semibold text-center">Total Entries</th>
                   <th className="py-3 px-4 font-semibold text-center">Assigned to TC</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
+                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Wrong No.</th>
+                  <th className="py-3 px-4 font-semibold text-center text-purple-400">Reverted</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-green">Closed</th>
                   <th className="py-3 px-4 font-semibold text-center text-red-500">Deleted</th>
                 </tr>
@@ -1004,12 +1021,15 @@ export default function MasterReports() {
                       </td>
                       <td className="py-3 px-4 text-center font-bold text-white">{d.totalEntries.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-text-secondary">{d.assigned.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-red">{d.immediate.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-orange-400">{d.wrongNumber.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-purple-400">{d.reverted.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-accent-green">{d.closed.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-red-500">{d.deleted.toLocaleString()}</td>
                     </tr>
                     {expandedTlRows.has(d.id) && Object.keys(d.telecallers).length > 0 && (
                       <tr className="bg-bg-primary border-b border-bg-border">
-                        <td colSpan={6} className="p-0">
+                        <td colSpan={9} className="p-0">
                           <div className="py-4 pl-12 pr-4">
                             <h4 className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-3">Telecaller Breakdown</h4>
                             <table className="w-full text-left border-collapse text-xs">
@@ -1017,6 +1037,9 @@ export default function MasterReports() {
                                 <tr className="text-text-muted border-b border-bg-border/50 uppercase tracking-widest text-[9px]">
                                   <th className="py-2 px-3 font-semibold">Telecaller Name</th>
                                   <th className="py-2 px-3 font-semibold text-center">Assigned Leads</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-red">Immediate</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-orange-400">Wrong No.</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-purple-400">Reverted</th>
                                   <th className="py-2 px-3 font-semibold text-center text-accent-green">Closed</th>
                                   <th className="py-2 px-3 font-semibold text-center text-red-500">Deleted</th>
                                 </tr>
@@ -1026,6 +1049,9 @@ export default function MasterReports() {
                                   <tr key={tcIdx} className="border-b border-bg-border/50 last:border-0 hover:bg-bg-hover/30">
                                     <td className="py-2 px-3 text-white font-medium">{tc.name}</td>
                                     <td className="py-2 px-3 text-center text-text-secondary font-medium">{tc.assigned}</td>
+                                    <td className="py-2 px-3 text-center text-accent-red font-medium">{tc.immediate}</td>
+                                    <td className="py-2 px-3 text-center text-orange-400 font-medium">{tc.wrongNumber}</td>
+                                    <td className="py-2 px-3 text-center text-purple-400 font-medium">{tc.reverted}</td>
                                     <td className="py-2 px-3 text-center text-accent-green font-medium">{tc.closed}</td>
                                     <td className="py-2 px-3 text-center text-red-500 font-medium">{tc.deleted}</td>
                                   </tr>
@@ -1038,7 +1064,7 @@ export default function MasterReports() {
                     )}
                     </React.Fragment>
                   )) : (
-                    <tr><td colSpan={6} className="py-8 text-center text-text-muted">No team lead data available.</td></tr>
+                    <tr><td colSpan={9} className="py-8 text-center text-text-muted">No team lead data available.</td></tr>
                   );
                 })()}
               </tbody>

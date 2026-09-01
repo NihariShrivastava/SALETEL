@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Loader2, PhoneCall, X, FileText } from 'lucide-react';
+import { Loader2, PhoneCall, X, FileText, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import { startOfDay, endOfDay } from 'date-fns';
+import * as XLSX from 'xlsx';
+
 
 interface SubmissionData {
   id: string;
@@ -120,6 +122,66 @@ export default function LeadStatusCount() {
     }
   };
 
+  const exportToExcel = (dataList: SubmissionData[], filename: string) => {
+    if (dataList.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const sortedDataList = [...dataList].sort((a, b) => a._bucket.localeCompare(b._bucket));
+    const dataToExport = sortedDataList.map(sub => {
+      let tName = 'Unknown';
+      if (sub.form_templates) {
+        tName = Array.isArray(sub.form_templates) ? (sub.form_templates[0] as any)?.name : (sub.form_templates as any)?.name;
+      }
+
+      const row: any = {
+        'ID': sub.id.split('-')[0].toUpperCase(),
+        'Submitted At': new Date(sub.submitted_at).toLocaleString(),
+        'Surveyor': (sub.surveyors as any)?.full_name || (sub.surveyors as any)?.username || 'Unknown',
+        'Domain': (sub.domains as any)?.name || 'Unassigned',
+        'Template': tName,
+        'Form Status': sub.status,
+        'Lead Status': sub._bucket.replace('_', ' ').toUpperCase(),
+        'Remarks': sub.admin_notes || '-'
+      };
+
+      if (sub.data && typeof sub.data === 'object') {
+        const templates: any = sub.form_templates;
+        const fieldsData = Array.isArray(templates) ? templates[0]?.fields : templates?.fields;
+        
+        for (const [k, v] of Object.entries(sub.data)) {
+          let label = k;
+          if (fieldsData) {
+             const fieldConfig = (fieldsData as any[]).find((f: any) => f.id === k);
+             if (fieldConfig && fieldConfig.label) {
+               label = fieldConfig.label;
+             }
+          }
+
+          if (typeof v === 'object' && v !== null) {
+            if ('lat' in v && 'lng' in v) {
+              row[label] = `Lat: ${(v as any).lat}, Lng: ${(v as any).lng}`;
+            } else if (Array.isArray(v)) {
+              row[label] = v.join(', ');
+            } else {
+              row[label] = JSON.stringify(v);
+            }
+          } else {
+            row[label] = v;
+          }
+        }
+      }
+
+      return row;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Leads');
+    XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   // Compute filtered counts
   const filteredSubmissions = submissions.filter(sub => {
     const domainMatch = filterDomain === 'all' || (sub.domains as any)?.name === filterDomain;
@@ -191,6 +253,10 @@ export default function LeadStatusCount() {
               Apply
             </button>
           </div>
+          <Button onClick={() => exportToExcel(filteredSubmissions, 'SALETEL_All_Leads')} className="bg-accent-green hover:bg-accent-green/90 text-white border-transparent shadow-lg shadow-accent-green/20">
+            <Download className="w-4 h-4 mr-2" />
+            Export Excel
+          </Button>
         </div>
       </div>
 
@@ -312,9 +378,15 @@ export default function LeadStatusCount() {
                 </h3>
                 <p className="text-xs text-text-secondary mt-1">Found {statusListSubs.length} leads</p>
               </div>
-              <button onClick={() => setSelectedStatusType(null)} className="text-text-muted hover:text-white p-2 rounded-full hover:bg-bg-secondary transition-colors">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-3">
+                <Button onClick={() => exportToExcel(statusListSubs, `SALETEL_${selectedStatusType?.toUpperCase()}_Leads`)} size="sm" className="bg-accent-green hover:bg-accent-green/90 text-white">
+                  <Download className="w-4 h-4 mr-2" />
+                  Export Excel
+                </Button>
+                <button onClick={() => setSelectedStatusType(null)} className="text-text-muted hover:text-white p-2 rounded-full hover:bg-bg-secondary transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-auto">
               <table className="w-full text-left border-collapse whitespace-nowrap text-sm">
