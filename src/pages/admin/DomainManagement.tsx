@@ -15,7 +15,7 @@ const iconList = ['Briefcase', 'Car', 'Wrench', 'ClipboardCheck', 'UserCheck', '
 
 interface DomainWithStats extends Domain {
   surveyors?: { id: string }[];
-  form_templates?: { id: string, name: string, is_active: boolean }[];
+  form_templates?: { id: string, name: string, is_active: boolean, is_deleted?: boolean }[];
 }
 
 export default function DomainManagement() {
@@ -24,6 +24,7 @@ export default function DomainManagement() {
   
   const [domains, setDomains] = useState<DomainWithStats[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'active' | 'trash-domains' | 'trash-templates'>('active');
 
   // Form State
   const [editingDomainId, setEditingDomainId] = useState<string | null>(null);
@@ -44,7 +45,7 @@ export default function DomainManagement() {
         .select(`
           *,
           surveyors(id),
-          form_templates(id, name, is_active)
+          form_templates(id, name, is_active, is_deleted)
         `)
         .order('created_at', { ascending: false });
         
@@ -101,29 +102,73 @@ export default function DomainManagement() {
     setSelectedColor(domain.color || '#4f6ef7');
   };
 
-  const handleDeleteDomain = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this domain? This might affect existing users.')) return;
+  const handleDeleteDomain = async (id: string, isPermanent = false) => {
+    const message = isPermanent 
+      ? 'Are you sure you want to permanently delete this domain? This action cannot be undone.'
+      : 'Are you sure you want to move this domain to trash?';
+    if (!window.confirm(message)) return;
+
     try {
-      const { error } = await supabase.from('domains').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Domain deleted');
+      if (isPermanent) {
+        const { error } = await supabase.from('domains').delete().eq('id', id);
+        if (error) throw error;
+        toast.success('Domain permanently deleted');
+      } else {
+        const { error } = await supabase.from('domains').update({ is_deleted: true }).eq('id', id);
+        if (error) throw error;
+        toast.success('Domain moved to trash');
+      }
       fetchData();
     } catch (error) {
       console.error(error);
-      toast.error('Failed to delete domain. It may be in use.');
+      toast.error('Failed to delete domain.');
     }
   };
 
-  const handleDeleteTemplate = async (templateId: string) => {
-    if (!window.confirm('Are you sure you want to delete this template? This will remove all associated submissions.')) return;
+  const handleRestoreDomain = async (id: string) => {
     try {
-      const { error } = await supabase.from('form_templates').delete().eq('id', templateId);
+      const { error } = await supabase.from('domains').update({ is_deleted: false }).eq('id', id);
       if (error) throw error;
-      toast.success('Template deleted');
+      toast.success('Domain restored');
       fetchData();
     } catch (error) {
       console.error(error);
-      toast.error('Failed to delete template. It may be in use.');
+      toast.error('Failed to restore domain');
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string, isPermanent = false) => {
+    const message = isPermanent
+      ? 'Are you sure you want to permanently delete this template? This will remove all associated submissions.'
+      : 'Are you sure you want to move this template to trash?';
+    if (!window.confirm(message)) return;
+
+    try {
+      if (isPermanent) {
+        const { error } = await supabase.from('form_templates').delete().eq('id', templateId);
+        if (error) throw error;
+        toast.success('Template permanently deleted');
+      } else {
+        const { error } = await supabase.from('form_templates').update({ is_deleted: true }).eq('id', templateId);
+        if (error) throw error;
+        toast.success('Template moved to trash');
+      }
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to delete template.');
+    }
+  };
+
+  const handleRestoreTemplate = async (templateId: string) => {
+    try {
+      const { error } = await supabase.from('form_templates').update({ is_deleted: false }).eq('id', templateId);
+      if (error) throw error;
+      toast.success('Template restored');
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to restore template');
     }
   };
 
@@ -132,12 +177,43 @@ export default function DomainManagement() {
     return <IconComponent className="w-5 h-5" style={{ color }} />;
   };
 
+  const activeDomains = domains.filter(d => !d.is_deleted);
+  const trashedDomains = domains.filter(d => d.is_deleted);
+  
+  // Collect all trashed templates across all domains (including active and trashed domains)
+  const trashedTemplates = domains.flatMap(d => 
+    (d.form_templates || [])
+      .filter(t => t.is_deleted)
+      .map(t => ({ ...t, domainName: d.name }))
+  );
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-white tracking-tight">Domains Console</h2>
-        <p className="text-text-secondary text-sm mt-1">Manage functional domains and their templates.</p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Domains Console</h2>
+          <p className="text-text-secondary text-sm mt-1">Manage functional domains and their templates.</p>
+        </div>
+        <div className="flex gap-3">
+          {viewMode !== 'active' && (
+            <Button variant="outline" onClick={() => setViewMode('active')} className="gap-2">
+              <Icons.ArrowLeft className="w-4 h-4" /> Back to Active
+            </Button>
+          )}
+          {viewMode === 'active' && (
+            <>
+              <Button variant="outline" onClick={() => setViewMode('trash-domains')} className="gap-2 text-accent-red hover:text-accent-red hover:bg-accent-red/10 border-bg-border">
+                <Icons.Trash2 className="w-4 h-4" /> Trash Domains ({trashedDomains.length})
+              </Button>
+              <Button variant="outline" onClick={() => setViewMode('trash-templates')} className="gap-2 text-accent-red hover:text-accent-red hover:bg-accent-red/10 border-bg-border">
+                <Icons.Trash2 className="w-4 h-4" /> Trash Templates ({trashedTemplates.length})
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+
+      {viewMode === 'active' && (
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Panel - Create/Edit Domain */}
@@ -209,9 +285,9 @@ export default function DomainManagement() {
         <div className="lg:col-span-2 space-y-4">
           <h3 className="text-sm font-semibold text-white uppercase tracking-widest mb-4">Active Domains</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {domains.map(domain => {
+            {activeDomains.map(domain => {
               const surveyorCount = domain.surveyors?.length || 0;
-              const templateList = domain.form_templates || [];
+              const templateList = (domain.form_templates || []).filter(t => !t.is_deleted);
               const hasTemplate = templateList.length > 0;
 
               return (
@@ -267,8 +343,9 @@ export default function DomainManagement() {
                               <Icons.Edit2 className="w-4 h-4" />
                             </button>
                             <button 
-                              onClick={() => handleDeleteTemplate(tpl.id)}
+                              onClick={() => handleDeleteTemplate(tpl.id, false)}
                               className="text-text-muted hover:text-accent-red"
+                              title="Move to Trash"
                             >
                               <Icons.Trash2 className="w-4 h-4" />
                             </button>
@@ -284,14 +361,78 @@ export default function DomainManagement() {
               );
             })}
             
-            {domains.length === 0 && (
+            {activeDomains.length === 0 && (
               <div className="col-span-1 md:col-span-2 text-center py-12 border border-dashed border-bg-border rounded-xl text-text-muted">
-                No domains found. Create one to get started.
+                No active domains found. Create one to get started.
               </div>
             )}
           </div>
         </div>
       </div>
+      )}
+
+      {/* Trash Domains View */}
+      {viewMode === 'trash-domains' && (
+        <Card title="Trash Domains">
+          <div className="space-y-4 mt-4">
+            {trashedDomains.map(domain => (
+              <div key={domain.id} className="flex items-center justify-between p-4 bg-bg-primary border border-bg-border rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-bg-secondary border border-bg-border opacity-70">
+                    {renderIcon(domain.icon || 'HelpCircle', domain.color || '#94a3b8')}
+                  </div>
+                  <div>
+                    <h4 className="text-white font-medium">{domain.name}</h4>
+                    <p className="text-xs text-text-muted">{domain.description || 'No description'}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => handleRestoreDomain(domain.id)} className="gap-1">
+                    <Icons.RefreshCcw className="w-4 h-4" /> Restore
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => handleDeleteDomain(domain.id, true)} className="gap-1">
+                    <Icons.AlertTriangle className="w-4 h-4" /> Delete Permanently
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {trashedDomains.length === 0 && (
+              <div className="text-center py-8 text-text-muted italic border border-dashed border-bg-border rounded-lg">
+                Trash is empty.
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Trash Templates View */}
+      {viewMode === 'trash-templates' && (
+        <Card title="Trash Templates">
+          <div className="space-y-4 mt-4">
+            {trashedTemplates.map(tpl => (
+              <div key={tpl.id} className="flex items-center justify-between p-4 bg-bg-primary border border-bg-border rounded-lg">
+                <div>
+                  <h4 className="text-white font-medium">{tpl.name || 'Unnamed Template'}</h4>
+                  <p className="text-xs text-text-muted">From Domain: {tpl.domainName}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => handleRestoreTemplate(tpl.id)} className="gap-1">
+                    <Icons.RefreshCcw className="w-4 h-4" /> Restore
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => handleDeleteTemplate(tpl.id, true)} className="gap-1">
+                    <Icons.AlertTriangle className="w-4 h-4" /> Delete Permanently
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {trashedTemplates.length === 0 && (
+              <div className="text-center py-8 text-text-muted italic border border-dashed border-bg-border rounded-lg">
+                Trash is empty.
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

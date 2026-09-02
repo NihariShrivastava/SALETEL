@@ -55,6 +55,7 @@ export default function CustomTemplateDashboard() {
         .from('form_templates')
         .select('*')
         .eq('id', templateId)
+        .or('is_deleted.is.null,is_deleted.eq.false')
         .single();
       
       if (templateError) throw templateError;

@@ -28,7 +28,7 @@ export default function Submissions() {
     try {
       const [subsRes, domainsRes] = await Promise.all([
         supabase.from('submissions').select('*, surveyors!surveyor_id(full_name), domains(id, name), form_templates(fields)').order('submitted_at', { ascending: false }),
-        supabase.from('domains').select('id, name')
+        supabase.from('domains').select('id, name').or('is_deleted.is.null,is_deleted.eq.false')
       ]);
 
       if (subsRes.error) throw subsRes.error;

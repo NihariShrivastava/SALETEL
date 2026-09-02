@@ -61,10 +61,10 @@ export default function SurveyorManagement() {
         { data: tData },
         { data: sData, error }
       ] = await Promise.all([
-        supabase.from('domains').select('*'),
+        supabase.from('domains').select('*').or('is_deleted.is.null,is_deleted.eq.false'),
         supabase.from('user_roles').select('*'),
         supabase.from('counters').select('*'),
-        supabase.from('form_templates').select('id, name, domain_id'),
+        supabase.from('form_templates').select('id, name, domain_id').or('is_deleted.is.null,is_deleted.eq.false'),
         supabase.from('surveyors').select('*, user_role:user_roles(name)').order('created_at', { ascending: false })
       ]);
 

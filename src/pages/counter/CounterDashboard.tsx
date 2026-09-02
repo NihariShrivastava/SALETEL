@@ -41,7 +41,8 @@ export default function CounterDashboard() {
             const { data: dData } = await supabase
               .from('domains')
               .select('id, name')
-              .in('id', Array.from(allDomainIds));
+              .in('id', Array.from(allDomainIds))
+              .or('is_deleted.is.null,is_deleted.eq.false');
               
             const domainMap = new Map(dData?.map(d => [d.id, d.name]) || []);
             

@@ -136,7 +136,7 @@ export default function MasterReports() {
   const fetchData = async (start = globalStartDate, end = globalEndDate) => {
     setIsLoading(true);
     try {
-      const { count: domainCount, error: domainError } = await supabase.from('domains').select('*', { count: 'exact', head: true });
+      const { count: domainCount, error: domainError } = await supabase.from('domains').select('*', { count: 'exact', head: true }).or('is_deleted.is.null,is_deleted.eq.false');
       if (domainError) throw domainError;
 
       const { count: survCount, error: survError } = await supabase.from('surveyors').select('*', { count: 'exact', head: true });
@@ -588,7 +588,7 @@ export default function MasterReports() {
     if (templates.length === 0) {
       setIsLoadingTemplates(true);
       try {
-        const { data, error } = await supabase.from('form_templates').select('id, name, description').eq('is_active', true);
+        const { data, error } = await supabase.from('form_templates').select('id, name, description').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false');
         if (error) throw error;
         setTemplates(data || []);
       } catch (err) {

@@ -36,6 +36,7 @@ function BuilderInner() {
             .from('form_templates')
             .select('*')
             .eq('id', templateIdParam)
+            .or('is_deleted.is.null,is_deleted.eq.false')
             .single();
           
         if (error && error.code !== 'PGRST116') throw error; // PGRST116 is not found
@@ -48,7 +49,7 @@ function BuilderInner() {
           }
         } else {
           // Fetch domain to default form name
-          const { data: domainData } = await supabase.from('domains').select('name').eq('id', domainId).single();
+          const { data: domainData } = await supabase.from('domains').select('name').eq('id', domainId).or('is_deleted.is.null,is_deleted.eq.false').single();
           if (domainData) {
             setFormName(`${domainData.name} Template`);
           }

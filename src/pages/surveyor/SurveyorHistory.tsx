@@ -35,7 +35,8 @@ export default function SurveyorHistory() {
           const { data: domainsData } = await supabase
             .from('domains')
             .select('id, name')
-            .in('id', domainIdsToFetch);
+            .in('id', domainIdsToFetch)
+            .or('is_deleted.is.null,is_deleted.eq.false');
 
           if (domainsData) {
             setAssignedDomains(domainsData);

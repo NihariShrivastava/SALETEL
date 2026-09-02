@@ -88,7 +88,7 @@ export default function FillForm({ domainId, templateId, onSuccess, onCancel, is
     
     const fetchTemplate = async () => {
       try {
-        let query = supabase.from('form_templates').select('*').eq('is_active', true);
+        let query = supabase.from('form_templates').select('*').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false');
         if (activeTemplateIdParam) {
           query = query.eq('id', activeTemplateIdParam);
         } else if (activeDomainId) {

@@ -49,7 +49,8 @@ export default function SurveyorDashboard() {
         const { data: domainsData } = await supabase
           .from('domains')
           .select('id, name')
-          .in('id', domainIdsToFetch);
+          .in('id', domainIdsToFetch)
+          .or('is_deleted.is.null,is_deleted.eq.false');
 
         if (domainsData) {
           setAssignedDomains(domainsData);
@@ -96,7 +97,8 @@ export default function SurveyorDashboard() {
         .from('form_templates')
         .select('id, name')
         .eq('domain_id', activeDomainId)
-        .in('id', templateIds);
+        .in('id', templateIds)
+        .or('is_deleted.is.null,is_deleted.eq.false');
         
       if (tData) {
         setAssignedTemplates(tData);
