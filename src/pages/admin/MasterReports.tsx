@@ -47,6 +47,7 @@ interface TeamLeadData {
   name: string;
   totalEntries: number;
   assigned: number;
+  newLeads: number;
   immediate: number;
   wrongNumber: number;
   reverted: number;
@@ -56,6 +57,7 @@ interface TeamLeadData {
     id: string;
     name: string;
     assigned: number;
+    newLeads: number;
     immediate: number;
     wrongNumber: number;
     reverted: number;
@@ -230,6 +232,7 @@ export default function MasterReports() {
             name: tl.full_name,
             totalEntries: 0,
             assigned: 0,
+            newLeads: 0,
             immediate: 0,
             wrongNumber: 0,
             reverted: 0,
@@ -372,6 +375,7 @@ export default function MasterReports() {
               name: actualTl.name,
               totalEntries: 0,
               assigned: 0,
+              newLeads: 0,
               immediate: 0,
               wrongNumber: 0,
               reverted: 0,
@@ -391,6 +395,7 @@ export default function MasterReports() {
                 id: sub.telecaller_id,
                 name: tcNameMap.get(sub.telecaller_id) || 'Unknown Telecaller',
                 assigned: 0,
+                newLeads: 0,
                 immediate: 0,
                 wrongNumber: 0,
                 reverted: 0,
@@ -401,14 +406,16 @@ export default function MasterReports() {
             
             const tlTcMap = tlMap.telecallers[sub.telecaller_id];
             tlTcMap.assigned += 1;
-            if (bucket === 'immediate') tlTcMap.immediate += 1;
+            if (bucket === 'new') tlTcMap.newLeads += 1;
+            else if (bucket === 'immediate') tlTcMap.immediate += 1;
             else if (bucket === 'closed') tlTcMap.closed += 1;
             else if (bucket === 'deleted') tlTcMap.deleted += 1;
             else if (bucket === 'wrong_number') tlTcMap.wrongNumber += 1;
             else if (bucket === 'reverted') tlTcMap.reverted += 1;
           }
 
-          if (bucket === 'immediate') tlMap.immediate += 1;
+          if (bucket === 'new') tlMap.newLeads += 1;
+          else if (bucket === 'immediate') tlMap.immediate += 1;
           else if (bucket === 'closed') tlMap.closed += 1;
           else if (bucket === 'deleted') tlMap.deleted += 1;
           else if (bucket === 'wrong_number') tlMap.wrongNumber += 1;
@@ -514,13 +521,19 @@ export default function MasterReports() {
       dataToExport = dataSurveyors.map(d => ({ Surveyor: d.name, Role: d.role, Submissions: d.submissions }));
       sheetName = 'By Surveyor';
     } else if (activeTab === 'teamlead') {
-      dataToExport = dataTeamLeads.map(d => ({
-        'Team Lead': d.name,
-        'Total Entries Managed': d.totalEntries,
-        'Assigned to TC': d.assigned,
-        'Closed': d.closed,
-        'Deleted': d.deleted
-      }));
+      dataToExport = dataTeamLeads.map(d => {
+        const called = Math.max(0, d.assigned - (d.newLeads || 0));
+        const inLoop = Math.max(0, called - d.closed - d.wrongNumber - d.reverted - d.deleted);
+        return {
+          'Team Lead': d.name,
+          'Total Entries Managed': d.totalEntries,
+          'Assigned to TC': d.assigned,
+          'Called': called,
+          'In Loop': inLoop,
+          'Closed': d.closed,
+          'Deleted': d.deleted
+        };
+      });
       sheetName = 'By Team Lead';
     } else if (activeTab === 'telecaller') {
       dataToExport = dataTelecallers.map(d => ({
@@ -997,6 +1010,8 @@ export default function MasterReports() {
                   <th className="py-3 px-4 font-semibold">Team Lead</th>
                   <th className="py-3 px-4 font-semibold text-center">Total Entries</th>
                   <th className="py-3 px-4 font-semibold text-center">Assigned to TC</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Called</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-yellow">In Loop</th>
                   <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
                   <th className="py-3 px-4 font-semibold text-center text-orange-400">Wrong No.</th>
                   <th className="py-3 px-4 font-semibold text-center text-purple-400">Reverted</th>
@@ -1021,6 +1036,8 @@ export default function MasterReports() {
                       </td>
                       <td className="py-3 px-4 text-center font-bold text-white">{d.totalEntries.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-text-secondary">{d.assigned.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-blue">{Math.max(0, d.assigned - (d.newLeads || 0)).toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-yellow">{Math.max(0, (d.assigned - (d.newLeads || 0)) - d.closed - d.wrongNumber - d.reverted - d.deleted).toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-accent-red">{d.immediate.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-orange-400">{d.wrongNumber.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-purple-400">{d.reverted.toLocaleString()}</td>
@@ -1037,6 +1054,8 @@ export default function MasterReports() {
                                 <tr className="text-text-muted border-b border-bg-border/50 uppercase tracking-widest text-[9px]">
                                   <th className="py-2 px-3 font-semibold">Telecaller Name</th>
                                   <th className="py-2 px-3 font-semibold text-center">Assigned Leads</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-blue">Called</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-yellow">In Loop</th>
                                   <th className="py-2 px-3 font-semibold text-center text-accent-red">Immediate</th>
                                   <th className="py-2 px-3 font-semibold text-center text-orange-400">Wrong No.</th>
                                   <th className="py-2 px-3 font-semibold text-center text-purple-400">Reverted</th>
@@ -1049,6 +1068,8 @@ export default function MasterReports() {
                                   <tr key={tcIdx} className="border-b border-bg-border/50 last:border-0 hover:bg-bg-hover/30">
                                     <td className="py-2 px-3 text-white font-medium">{tc.name}</td>
                                     <td className="py-2 px-3 text-center text-text-secondary font-medium">{tc.assigned}</td>
+                                    <td className="py-2 px-3 text-center text-accent-blue font-medium">{Math.max(0, tc.assigned - (tc.newLeads || 0))}</td>
+                                    <td className="py-2 px-3 text-center text-accent-yellow font-medium">{Math.max(0, (tc.assigned - (tc.newLeads || 0)) - tc.closed - tc.wrongNumber - tc.reverted - tc.deleted)}</td>
                                     <td className="py-2 px-3 text-center text-accent-red font-medium">{tc.immediate}</td>
                                     <td className="py-2 px-3 text-center text-orange-400 font-medium">{tc.wrongNumber}</td>
                                     <td className="py-2 px-3 text-center text-purple-400 font-medium">{tc.reverted}</td>
