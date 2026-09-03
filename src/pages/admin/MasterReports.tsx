@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Download, Filter, Database, Users, Building2, Loader2, X, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, FileCheck } from 'lucide-react';
+import { Download, Filter, Database, Building2, Loader2, X, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, FileCheck } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -72,6 +72,7 @@ interface FileHandlerData {
   assignedLeads: number;
   totalSubmitted: number;
   totalClosed: number;
+  linkedFilesCount?: number;
   team_lead_ids?: string[];
 }
 
@@ -88,7 +89,6 @@ export default function MasterReports() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [dataDomains, setDataDomains] = useState<{name: string, count: number}[]>([]);
-  const [dataRoles, setDataRoles] = useState<{name: string, count: number}[]>([]);
   const [dataSurveyors, setDataSurveyors] = useState<SurveyorData[]>([]);
   const [dataTelecallers, setDataTelecallers] = useState<TelecallerData[]>([]);
   const [dataTeamLeads, setDataTeamLeads] = useState<TeamLeadData[]>([]);
@@ -100,7 +100,6 @@ export default function MasterReports() {
   const [masterDump, setMasterDump] = useState<any[]>([]);
   const [masterDumpPage, setMasterDumpPage] = useState(1);
   const masterDumpItemsPerPage = 20;
-  const [dynamicColumns, setDynamicColumns] = useState<string[]>([]);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
@@ -485,7 +484,7 @@ export default function MasterReports() {
         
       if (fhData) {
         fhData.forEach((fh: any) => {
-          fhMap[fh.id] = { id: fh.id, name: fh.full_name, assignedLeads: 0, totalSubmitted: 0, totalClosed: 0, team_lead_ids: fh.team_lead_ids || [] };
+          fhMap[fh.id] = { id: fh.id, name: fh.full_name, assignedLeads: 0, totalSubmitted: 0, totalClosed: 0, linkedFilesCount: 0, team_lead_ids: fh.team_lead_ids || [] };
         });
       }
 
@@ -497,11 +496,14 @@ export default function MasterReports() {
       if (fileSubsData) {
         fileSubsData.forEach((fs: any) => {
           if (fhMap[fs.file_handler_id]) {
-            if (fs.status === 'submitted' || fs.status === 'closed') {
+            if (fs.status === 'submitted') {
               fhMap[fs.file_handler_id].totalSubmitted += 1;
             }
-            if (fs.status === 'closed') {
+            if (fs.status === 'closed' || fs.status === 'cleared') {
                fhMap[fs.file_handler_id].totalClosed += 1;
+            }
+            if (fs.original_lead_id) {
+               fhMap[fs.file_handler_id].linkedFilesCount = (fhMap[fs.file_handler_id].linkedFilesCount || 0) + 1;
             }
           }
         });
@@ -724,10 +726,7 @@ export default function MasterReports() {
         }
       });
 
-      setDynamicColumns(Array.from(dynamicKeysSet));
-
       setDataDomains(Object.entries(domainMap).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count));
-      setDataRoles(Object.entries(roleMap).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count));
       
       setDataSurveyors(Object.values(survMap).sort((a,b) => b.submissions - a.submissions));
       setDataTelecallers(Object.values(telecallerMap).sort((a,b) => b.assigned - a.assigned));
@@ -802,12 +801,16 @@ export default function MasterReports() {
       }));
       sheetName = 'Outcome By Telecaller';
     } else if (activeTab === 'filehandler') {
-      dataToExport = dataFileHandlers.map(d => ({
-        'File Handler': d.name,
-        'Leads Assigned (Closed by TL)': d.assignedLeads,
-        'Files Opened by Handler': d.totalSubmitted,
-        'Files Closed by Handler': d.totalClosed
-      }));
+      dataToExport = dataFileHandlers.map(d => {
+        const pendingCount = Math.max(0, d.assignedLeads - (d.linkedFilesCount || 0));
+        return {
+          'File Handler': d.name,
+          'Leads Assigned': d.assignedLeads,
+          'Leads Pending': pendingCount,
+          'Open File': d.totalSubmitted,
+          'Cleared Files': d.totalClosed
+        };
+      });
       sheetName = 'File Handler Performance';
     } else {
       dataToExport = masterDump.map(({ _raw, ...rest }) => rest);
@@ -981,14 +984,14 @@ export default function MasterReports() {
             <div className="text-xs text-text-muted mt-1 flex items-center">Active file handlers</div>
           </Card>
           <Card className="p-4">
-            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Files Submitted</div>
-            <div className="text-2xl font-bold text-accent-blue tracking-tight">{totalSub.toLocaleString()}</div>
-            <div className="text-xs text-text-muted mt-1 flex items-center">Forms submitted by handlers</div>
+            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Open Files</div>
+            <div className="text-2xl font-bold text-white tracking-tight">{totalSub.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1 flex items-center">Files currently open</div>
           </Card>
           <Card className="p-4">
-            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Files Closed</div>
-            <div className="text-2xl font-bold text-accent-green tracking-tight">{totalCls.toLocaleString()}</div>
-            <div className="text-xs text-text-muted mt-1 flex items-center">Files closed completely</div>
+            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Files Cleared</div>
+            <div className="text-2xl font-bold text-pink-500 tracking-tight">{totalCls.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1 flex items-center">Files cleared completely</div>
           </Card>
           <Card className="p-4 opacity-0 hidden md:block">
             {/* Empty card for layout */}
@@ -1188,7 +1191,6 @@ export default function MasterReports() {
                         </tr>
                       );
                     }
-                    const totalPages = Math.ceil(filteredDump.length / masterDumpItemsPerPage);
                     const currentItems = filteredDump.slice((masterDumpPage - 1) * masterDumpItemsPerPage, masterDumpPage * masterDumpItemsPerPage);
                     
                     return currentItems.map((sub, i) => (
@@ -1312,24 +1314,29 @@ export default function MasterReports() {
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
-                <tr className="text-text-muted text-[10px] uppercase tracking-widest text-center border-b border-bg-border/50">
-                  <th rowSpan={2} className="py-3 px-4 font-semibold text-left border-r border-bg-border/50">TL Name</th>
-                  <th rowSpan={2} className="py-3 px-4 font-semibold border-r border-bg-border/50">Assigned lead</th>
-                  <th rowSpan={2} className="py-3 px-4 font-semibold text-accent-blue border-r border-bg-border/50">Pending to call</th>
-                  <th colSpan={5} className="py-2 px-4 font-semibold text-white border-b border-r border-bg-border/50">Outcome of called No.</th>
-                  <th rowSpan={2} className="py-3 px-4 font-semibold text-accent-yellow">No. in Loop</th>
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest text-center border-b border-bg-border">
+                  <th className="py-3 px-4 font-semibold text-left border-r border-bg-border">TL Name</th>
+                  <th className="py-3 px-4 font-semibold border-r border-bg-border">Assigned lead</th>
+                  <th className="py-3 px-4 font-semibold text-accent-blue border-r border-bg-border">Pending to call</th>
+                  <th className="py-3 px-4 font-semibold text-white border-r border-bg-border">Called</th>
+                  <th colSpan={5} className="py-2 px-4 font-semibold text-white border-r border-bg-border">Outcome of called No.</th>
+                  <th className="py-3 px-4 font-semibold text-accent-yellow">Called in Loop</th>
                 </tr>
-                <tr className="text-text-muted text-[10px] uppercase tracking-widest text-center">
-                  <th className="py-2 px-3 font-semibold text-accent-red border-r border-bg-border/50">Imme</th>
-                  <th className="py-2 px-3 font-semibold text-orange-400 border-r border-bg-border/50">Wrong</th>
-                  <th className="py-2 px-3 font-semibold text-purple-400 border-r border-bg-border/50">Reverted</th>
-                  <th className="py-2 px-3 font-semibold text-accent-green border-r border-bg-border/50">Closed</th>
-                  <th className="py-2 px-3 font-semibold text-red-500 border-r border-bg-border/50">Deleted</th>
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest text-center border-b border-bg-border">
+                  <th className="py-2 px-3 border-r border-bg-border"></th>
+                  <th className="py-2 px-3 border-r border-bg-border"></th>
+                  <th className="py-2 px-3 border-r border-bg-border"></th>
+                  <th className="py-2 px-3 border-r border-bg-border"></th>
+                  <th className="py-2 px-3 font-semibold text-accent-red border-r border-bg-border">Imme</th>
+                  <th className="py-2 px-3 font-semibold text-orange-400 border-r border-bg-border">Wrong</th>
+                  <th className="py-2 px-3 font-semibold text-purple-400 border-r border-bg-border">Reverted</th>
+                  <th className="py-2 px-3 font-semibold text-accent-green border-r border-bg-border">Closed</th>
+                  <th className="py-2 px-3 font-semibold text-red-500 border-r border-bg-border">Deleted</th>
+                  <th className="py-2 px-3"></th>
                 </tr>
               </thead>
               <tbody>
                 {(() => {
-                  const totalPages = Math.ceil(dataTeamLeads.length / teamLeadItemsPerPage);
                   const currentItems = dataTeamLeads.slice((teamLeadPage - 1) * teamLeadItemsPerPage, teamLeadPage * teamLeadItemsPerPage);
                   
                   return currentItems.length > 0 ? currentItems.map((d, i) => (
@@ -1338,49 +1345,60 @@ export default function MasterReports() {
                       className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer"
                       onClick={() => toggleTlRow(d.id)}
                     >
-                      <td className="py-3 px-4 text-white font-medium flex items-center gap-2 border-r border-bg-border/50">
+                      <td className="py-3 px-4 text-white font-medium flex items-center gap-2 border-r border-bg-border">
                         {expandedTlRows.has(d.id) ? <ChevronDown className="w-4 h-4 text-text-muted" /> : <ChevronRight className="w-4 h-4 text-text-muted" />}
                         {d.name}
                       </td>
-                      <td className="py-3 px-4 text-center font-bold text-white border-r border-bg-border/50">{d.assigned.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-blue border-r border-bg-border/50">{d.newLeads.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-red border-r border-bg-border/50">{d.immediate.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-orange-400 border-r border-bg-border/50">{d.wrongNumber.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-purple-400 border-r border-bg-border/50">{d.reverted.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-green border-r border-bg-border/50">{d.closed.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-red-500 border-r border-bg-border/50">{d.deleted.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-bold text-white border-r border-bg-border">{d.assigned.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-blue border-r border-bg-border">{d.newLeads.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-white border-r border-bg-border">{Math.max(0, d.assigned - (d.newLeads || 0)).toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-red border-r border-bg-border">{d.immediate.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-orange-400 border-r border-bg-border">{d.wrongNumber.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-purple-400 border-r border-bg-border">{d.reverted.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-green border-r border-bg-border">{d.closed.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-red-500 border-r border-bg-border">{d.deleted.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-accent-yellow">{Math.max(0, (d.assigned - (d.newLeads || 0)) - d.immediate - d.wrongNumber - d.reverted - d.closed - d.deleted).toLocaleString()}</td>
                     </tr>
                     {expandedTlRows.has(d.id) && Object.keys(d.telecallers).length > 0 && (
                       <tr className="bg-bg-primary border-b border-bg-border">
-                        <td colSpan={9} className="p-0">
+                        <td colSpan={10} className="p-0">
                           <div className="py-4 pl-12 pr-4">
                             <h4 className="text-[10px] font-semibold text-text-muted uppercase tracking-widest mb-3">Telecaller Breakdown</h4>
-                            <table className="w-full text-left border-collapse text-xs">
-                              <thead>
-                                <tr className="text-text-muted border-b border-bg-border/50 uppercase tracking-widest text-[9px]">
-                                  <th className="py-2 px-3 font-semibold border-r border-bg-border/50">TC Name</th>
-                                  <th className="py-2 px-3 font-semibold text-center border-r border-bg-border/50">Assigned Lead</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-blue border-r border-bg-border/50">Pending to call</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-red border-r border-bg-border/50">Imme</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-orange-400 border-r border-bg-border/50">Wrong</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-purple-400 border-r border-bg-border/50">Reverted</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-green border-r border-bg-border/50">Closed</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-red-500 border-r border-bg-border/50">Deleted</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-yellow">No. in Loop</th>
+                            <table className="w-full text-left border-collapse text-xs border border-bg-border">
+                              <thead className="bg-bg-secondary/50">
+                                <tr className="text-text-muted border-b border-bg-border uppercase tracking-widest text-[9px]">
+                                  <th className="py-2 px-3 font-semibold border-r border-bg-border">TC Name</th>
+                                  <th className="py-2 px-3 font-semibold text-center border-r border-bg-border">Assigned Lead</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-blue border-r border-bg-border">Pending to call</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-white border-r border-bg-border">Called</th>
+                                  <th colSpan={5} className="py-1 px-3 font-semibold text-center text-white border-r border-bg-border">Outcome of called No.</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-yellow">Called in Loop</th>
+                                </tr>
+                                <tr className="text-text-muted text-[9px] uppercase tracking-widest text-center border-b border-bg-border">
+                                  <th className="py-1 px-2 border-r border-bg-border"></th>
+                                  <th className="py-1 px-2 border-r border-bg-border"></th>
+                                  <th className="py-1 px-2 border-r border-bg-border"></th>
+                                  <th className="py-1 px-2 border-r border-bg-border"></th>
+                                  <th className="py-1 px-2 font-semibold text-accent-red border-r border-bg-border">Imme</th>
+                                  <th className="py-1 px-2 font-semibold text-orange-400 border-r border-bg-border">Wrong</th>
+                                  <th className="py-1 px-2 font-semibold text-purple-400 border-r border-bg-border">Reverted</th>
+                                  <th className="py-1 px-2 font-semibold text-accent-green border-r border-bg-border">Closed</th>
+                                  <th className="py-1 px-2 font-semibold text-red-500 border-r border-bg-border">Deleted</th>
+                                  <th className="py-1 px-2"></th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {Object.values(d.telecallers).sort((a,b) => b.assigned - a.assigned).map((tc, tcIdx) => (
-                                  <tr key={tcIdx} className="border-b border-bg-border/50 last:border-0 hover:bg-bg-hover/30">
-                                    <td className="py-2 px-3 text-white font-medium border-r border-bg-border/50">{tc.name}</td>
-                                    <td className="py-2 px-3 text-center text-text-secondary font-medium border-r border-bg-border/50">{tc.assigned}</td>
-                                    <td className="py-2 px-3 text-center text-accent-blue font-medium border-r border-bg-border/50">{tc.newLeads}</td>
-                                    <td className="py-2 px-3 text-center text-accent-red font-medium border-r border-bg-border/50">{tc.immediate}</td>
-                                    <td className="py-2 px-3 text-center text-orange-400 font-medium border-r border-bg-border/50">{tc.wrongNumber}</td>
-                                    <td className="py-2 px-3 text-center text-purple-400 font-medium border-r border-bg-border/50">{tc.reverted}</td>
-                                    <td className="py-2 px-3 text-center text-accent-green font-medium border-r border-bg-border/50">{tc.closed}</td>
-                                    <td className="py-2 px-3 text-center text-red-500 font-medium border-r border-bg-border/50">{tc.deleted}</td>
+                                  <tr key={tcIdx} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/30">
+                                    <td className="py-2 px-3 text-white font-medium border-r border-bg-border">{tc.name}</td>
+                                    <td className="py-2 px-3 text-center text-text-secondary font-medium border-r border-bg-border">{tc.assigned}</td>
+                                    <td className="py-2 px-3 text-center text-accent-blue font-medium border-r border-bg-border">{tc.newLeads}</td>
+                                    <td className="py-2 px-3 text-center text-white font-medium border-r border-bg-border">{Math.max(0, tc.assigned - (tc.newLeads || 0))}</td>
+                                    <td className="py-2 px-3 text-center text-accent-red font-medium border-r border-bg-border">{tc.immediate}</td>
+                                    <td className="py-2 px-3 text-center text-orange-400 font-medium border-r border-bg-border">{tc.wrongNumber}</td>
+                                    <td className="py-2 px-3 text-center text-purple-400 font-medium border-r border-bg-border">{tc.reverted}</td>
+                                    <td className="py-2 px-3 text-center text-accent-green font-medium border-r border-bg-border">{tc.closed}</td>
+                                    <td className="py-2 px-3 text-center text-red-500 font-medium border-r border-bg-border">{tc.deleted}</td>
                                     <td className="py-2 px-3 text-center text-accent-yellow font-medium">{Math.max(0, (tc.assigned - (tc.newLeads || 0)) - tc.immediate - tc.wrongNumber - tc.reverted - tc.closed - tc.deleted)}</td>
                                   </tr>
                                 ))}
@@ -1392,7 +1410,7 @@ export default function MasterReports() {
                     )}
                     </React.Fragment>
                   )) : (
-                    <tr><td colSpan={9} className="py-8 text-center text-text-muted">No team lead data available.</td></tr>
+                    <tr><td colSpan={10} className="py-8 text-center text-text-muted">No team lead data available.</td></tr>
                   );
                 })()}
               </tbody>
@@ -1569,21 +1587,25 @@ export default function MasterReports() {
               <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
                 <tr className="text-text-muted text-[10px] uppercase tracking-widest">
                   <th className="py-3 px-4 font-semibold">File Handler</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Leads Assigned (Closed by TL)</th>
-                  <th className="py-3 px-4 font-semibold text-center text-white">Files Opened by Handler</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-green">Files Closed by Handler</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Leads Assigned</th>
+                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Leads Pending</th>
+                  <th className="py-3 px-4 font-semibold text-center text-white">Open File</th>
+                  <th className="py-3 px-4 font-semibold text-center text-pink-500">Cleared Files</th>
                 </tr>
               </thead>
               <tbody>
-                {dataFileHandlers.length > 0 ? dataFileHandlers.map((d, i) => (
+                {dataFileHandlers.length > 0 ? dataFileHandlers.map((d, i) => {
+                  const pendingCount = Math.max(0, d.assignedLeads - (d.linkedFilesCount || 0));
+                  return (
                   <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors">
                     <td className="py-3 px-4 text-white font-medium">{d.name}</td>
                     <td className="py-3 px-4 text-center text-accent-blue font-bold">{d.assignedLeads}</td>
+                    <td className="py-3 px-4 text-center text-orange-400 font-bold">{pendingCount}</td>
                     <td className="py-3 px-4 text-center text-white font-bold">{d.totalSubmitted.toLocaleString()}</td>
-                    <td className="py-3 px-4 text-center text-accent-green font-bold">{d.totalClosed.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center text-pink-500 font-bold">{d.totalClosed.toLocaleString()}</td>
                   </tr>
-                )) : (
-                  <tr><td colSpan={4} className="py-8 text-center text-text-muted">No file handler data available.</td></tr>
+                )}) : (
+                  <tr><td colSpan={5} className="py-8 text-center text-text-muted">No file handler data available.</td></tr>
                 )}
               </tbody>
             </table>

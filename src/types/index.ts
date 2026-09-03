@@ -132,9 +132,9 @@ export interface FileSubmission {
   id: string;
   file_form_template_id: string;
   file_handler_id: string;
-  original_lead_id: string;
+  original_lead_id: string | null;
   data: Record<string, any>;
-  status: 'submitted' | 'closed';
+  status: 'submitted' | 'closed' | 'cleared';
   submitted_at: string;
   updated_at: string;
   // joined relations
