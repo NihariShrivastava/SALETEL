@@ -7,6 +7,8 @@ import AdminLayout from './pages/admin/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
 import DomainManagement from './pages/admin/DomainManagement';
 import FormTemplateBuilder from './pages/admin/FormTemplateBuilder';
+import FileFormManagement from './pages/admin/FileFormManagement';
+import FileFormBuilder from './pages/admin/FileFormBuilder';
 import SurveyorManagement from './pages/admin/SurveyorManagement';
 import CounterManagement from './pages/admin/CounterManagement';
 import Submissions from './pages/admin/Submissions';
@@ -26,6 +28,7 @@ import TeamLeadDashboard from './pages/teamlead/TeamLeadDashboard';
 import TLCustomTemplateDashboard from './pages/teamlead/TLCustomTemplateDashboard';
 import TelecallerDashboard from './pages/telecaller/TelecallerDashboard';
 import TelecallerLeadsDashboard from './pages/teamlead/TelecallerLeadsDashboard';
+import FileHandlerDashboard from './pages/filehandler/FileHandlerDashboard';
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, role } = useAuth();
@@ -57,6 +60,12 @@ function TelecallerRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function FileHandlerRoute({ children }: { children: React.ReactNode }) {
+  const { user, role } = useAuth();
+  if (!user || role !== 'file_handler') return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <Router>
@@ -72,6 +81,7 @@ function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="domains" element={<DomainManagement />} />
+          <Route path="file-forms" element={<FileFormManagement />} />
           <Route path="surveyors" element={<SurveyorManagement />} />
           <Route path="counters" element={<CounterManagement />} />
           <Route path="submissions" element={<Submissions />} />
@@ -84,6 +94,16 @@ function App() {
         <Route path="/admin/domains/:domainId/template" element={
           <AdminRoute>
             <FormTemplateBuilder />
+          </AdminRoute>
+        } />
+        <Route path="/admin/file-forms/new" element={
+          <AdminRoute>
+            <FileFormBuilder />
+          </AdminRoute>
+        } />
+        <Route path="/admin/file-forms/edit/:templateIdParam" element={
+          <AdminRoute>
+            <FileFormBuilder />
           </AdminRoute>
         } />
         <Route path="/admin/reports/custom/:templateId" element={
@@ -149,6 +169,16 @@ function App() {
         }>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<TelecallerDashboard />} />
+        </Route>
+
+        {/* File Handler Routes */}
+        <Route path="/filehandler" element={
+          <FileHandlerRoute>
+            <SharedDashboardLayout title="File Handler Portal" homePath="/filehandler/dashboard" />
+          </FileHandlerRoute>
+        }>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<FileHandlerDashboard />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />

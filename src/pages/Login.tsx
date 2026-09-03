@@ -81,9 +81,10 @@ export default function Login() {
 
         const roleName = (surveyorData.user_role as any)?.name?.toLowerCase() || 'surveyor';
         
-        let normalizedRole: 'surveyor' | 'telecaller' | 'team_lead' = 'surveyor';
+        let normalizedRole: 'surveyor' | 'telecaller' | 'team_lead' | 'file_handler' = 'surveyor';
         if (roleName.includes('telecaller')) normalizedRole = 'telecaller';
         if (roleName.includes('team lead')) normalizedRole = 'team_lead';
+        if (roleName.includes('file handler')) normalizedRole = 'file_handler';
 
         login(surveyorData, normalizedRole);
         toast.success(`Welcome, ${surveyorData.full_name}`);
@@ -92,6 +93,8 @@ export default function Login() {
           navigate('/teamlead/dashboard');
         } else if (normalizedRole === 'telecaller') {
           navigate('/telecaller/dashboard');
+        } else if (normalizedRole === 'file_handler') {
+          navigate('/filehandler/dashboard');
         } else {
           navigate('/surveyor/dashboard');
         }

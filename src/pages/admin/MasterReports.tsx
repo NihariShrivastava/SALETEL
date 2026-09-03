@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Download, Filter, Database, Users, Building2, Loader2, X, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock, ChevronDown, ChevronRight } from 'lucide-react';
+import { Download, Filter, Database, Users, Building2, Loader2, X, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, FileCheck } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -66,6 +66,15 @@ interface TeamLeadData {
   }>;
 }
 
+interface FileHandlerData {
+  id: string;
+  name: string;
+  assignedLeads: number;
+  totalSubmitted: number;
+  totalClosed: number;
+  team_lead_ids?: string[];
+}
+
 interface CallLogData {
   telecallerId: string;
   telecallerName: string;
@@ -83,6 +92,7 @@ export default function MasterReports() {
   const [dataSurveyors, setDataSurveyors] = useState<SurveyorData[]>([]);
   const [dataTelecallers, setDataTelecallers] = useState<TelecallerData[]>([]);
   const [dataTeamLeads, setDataTeamLeads] = useState<TeamLeadData[]>([]);
+  const [dataFileHandlers, setDataFileHandlers] = useState<FileHandlerData[]>([]);
   const [teamLeadPage, setTeamLeadPage] = useState(1);
   const teamLeadItemsPerPage = 20;
   
@@ -95,6 +105,15 @@ export default function MasterReports() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [expandedTlRows, setExpandedTlRows] = useState<Set<string>>(new Set());
+
+  const [reportFilterDomain, setReportFilterDomain] = useState<string>('all');
+  const [reportFilterTemplate, setReportFilterTemplate] = useState<string>('all');
+  const [rawSubmissions, setRawSubmissions] = useState<any[] | null>(null);
+  const [rawCallLogs, setRawCallLogs] = useState<any[]>([]);
+  const [rawTeamLeads, setRawTeamLeads] = useState<any[]>([]);
+  const [rawTelecallers, setRawTelecallers] = useState<any[]>([]);
+  const [tcNameMapState, setTcNameMapState] = useState<Map<string, string>>(new Map());
+  const [surveyorToTlMapState, setSurveyorToTlMapState] = useState<Map<string, {id: string, name: string}>>(new Map());
 
   const toggleTlRow = (id: string) => {
     setExpandedTlRows(prev => {
@@ -111,6 +130,7 @@ export default function MasterReports() {
   const [filterDomain, setFilterDomain] = useState<string>('all');
   const [filterFormStatus, setFilterFormStatus] = useState<string>('all');
   const [filterLeadStatus, setFilterLeadStatus] = useState<string>('all');
+  const [filterTemplate, setFilterTemplate] = useState<string>('all');
   
   const navigate = useNavigate();
   
@@ -126,8 +146,170 @@ export default function MasterReports() {
   }, []);
 
   useEffect(() => {
+    if (!rawSubmissions) return;
+
+    const telecallerMap: Record<string, TelecallerData> = {};
+    const teamLeadMap: Record<string, TeamLeadData> = {};
+
+    rawTeamLeads.forEach(tl => {
+      teamLeadMap[tl.id] = {
+        id: tl.id,
+        name: tl.full_name,
+        totalEntries: 0,
+        assigned: 0,
+        newLeads: 0,
+        immediate: 0,
+        wrongNumber: 0,
+        reverted: 0,
+        closed: 0,
+        deleted: 0,
+        telecallers: {}
+      };
+    });
+
+    rawTelecallers.forEach((tc: any) => {
+      telecallerMap[tc.id] = {
+        id: tc.id,
+        name: tc.full_name || tcNameMapState.get(tc.id) || 'Unknown Telecaller',
+        assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+      };
+    });
+
+    rawSubmissions.forEach(sub => {
+      const dName = (sub.domains as any)?.name || 'Unassigned';
+      let tName = 'Unknown';
+      if (sub.form_templates) {
+        tName = Array.isArray(sub.form_templates) ? (sub.form_templates[0] as any)?.name : (sub.form_templates as any)?.name;
+      }
+      const finalTName = tName || '-';
+
+      let matches = true;
+      if (reportFilterDomain !== 'all' && dName !== reportFilterDomain) matches = false;
+      if (reportFilterTemplate !== 'all' && finalTName !== reportFilterTemplate) matches = false;
+
+      if (!matches) return;
+
+      let ls = sub.lead_status || 'new';
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      if (ls === 'skipped' && sub.lead_status_updated_at) {
+        if (new Date(sub.lead_status_updated_at) < today) ls = 'new';
+      }
+
+      let bucket = '';
+      if (sub.status === 'reverted') bucket = 'reverted';
+      else if (ls === 'closed') bucket = 'closed';
+      else bucket = ls;
+
+      if (sub.telecaller_id) {
+        if (!telecallerMap[sub.telecaller_id]) {
+          telecallerMap[sub.telecaller_id] = {
+            id: sub.telecaller_id,
+            name: tcNameMapState.get(sub.telecaller_id) || 'Unknown Telecaller',
+            assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+          };
+        }
+        const tMap = telecallerMap[sub.telecaller_id];
+        tMap.assigned += 1;
+        if (bucket === 'new') tMap.newLeads += 1;
+        else if (bucket === 'immediate') tMap.immediate += 1;
+        else if (bucket === 'hot') tMap.hot += 1;
+        else if (bucket === 'warm') tMap.warm += 1;
+        else if (bucket === 'cold') tMap.cold += 1;
+        else if (bucket === 'skipped') tMap.skipped += 1;
+        else if (bucket === 'wrong_number') tMap.wrongNumber += 1;
+        else if (bucket === 'reverted') tMap.reverted += 1;
+        else if (bucket === 'closed') tMap.closed += 1;
+      }
+
+      const actualTl = sub.surveyor_id ? surveyorToTlMapState.get(sub.surveyor_id) : null;
+      if (actualTl) {
+        if (!teamLeadMap[actualTl.id]) {
+          teamLeadMap[actualTl.id] = {
+            id: actualTl.id,
+            name: actualTl.name,
+            totalEntries: 0,
+            assigned: 0,
+            newLeads: 0,
+            immediate: 0,
+            wrongNumber: 0,
+            reverted: 0,
+            closed: 0,
+            deleted: 0,
+            telecallers: {}
+          };
+        }
+        const tlMap = teamLeadMap[actualTl.id];
+        tlMap.totalEntries += 1;
+        
+        if (sub.telecaller_id) {
+          tlMap.assigned += 1;
+          
+          if (!tlMap.telecallers[sub.telecaller_id]) {
+            tlMap.telecallers[sub.telecaller_id] = {
+              id: sub.telecaller_id,
+              name: tcNameMapState.get(sub.telecaller_id) || 'Unknown Telecaller',
+              assigned: 0,
+              newLeads: 0,
+              immediate: 0,
+              wrongNumber: 0,
+              reverted: 0,
+              closed: 0,
+              deleted: 0
+            };
+          }
+          
+          const tlTcMap = tlMap.telecallers[sub.telecaller_id];
+          tlTcMap.assigned += 1;
+          if (bucket === 'new') tlTcMap.newLeads += 1;
+          else if (bucket === 'immediate') tlTcMap.immediate += 1;
+          else if (bucket === 'closed') tlTcMap.closed += 1;
+          else if (bucket === 'deleted') tlTcMap.deleted += 1;
+          else if (bucket === 'wrong_number') tlTcMap.wrongNumber += 1;
+          else if (bucket === 'reverted') tlTcMap.reverted += 1;
+        }
+
+        if (bucket === 'new') tlMap.newLeads += 1;
+        else if (bucket === 'immediate') tlMap.immediate += 1;
+        else if (bucket === 'closed') tlMap.closed += 1;
+        else if (bucket === 'deleted') tlMap.deleted += 1;
+        else if (bucket === 'wrong_number') tlMap.wrongNumber += 1;
+        else if (bucket === 'reverted') tlMap.reverted += 1;
+      }
+    });
+
+    rawCallLogs.forEach((log: any) => {
+      const tcId = log.telecaller_id;
+      if (telecallerMap[tcId]) {
+        const pStat = log.previous_status || 'new';
+        if (pStat === 'new') telecallerMap[tcId].callsToNew = (telecallerMap[tcId].callsToNew || 0) + 1;
+        else if (pStat === 'cold') telecallerMap[tcId].callsToCold = (telecallerMap[tcId].callsToCold || 0) + 1;
+        else if (pStat === 'warm') telecallerMap[tcId].callsToWarm = (telecallerMap[tcId].callsToWarm || 0) + 1;
+        else if (pStat === 'hot') telecallerMap[tcId].callsToHot = (telecallerMap[tcId].callsToHot || 0) + 1;
+        else if (pStat === 'skipped') telecallerMap[tcId].callsToSkipped = (telecallerMap[tcId].callsToSkipped || 0) + 1;
+        else if (pStat === 'immediate') telecallerMap[tcId].callsToImmediate = (telecallerMap[tcId].callsToImmediate || 0) + 1;
+        else if (pStat === 'wrong_number') telecallerMap[tcId].callsToWrongNumber = (telecallerMap[tcId].callsToWrongNumber || 0) + 1;
+        else if (pStat === 'reverted_to_tl') telecallerMap[tcId].callsToReverted = (telecallerMap[tcId].callsToReverted || 0) + 1;
+        else if (pStat === 'closed') telecallerMap[tcId].callsToClosed = (telecallerMap[tcId].callsToClosed || 0) + 1;
+      }
+    });
+
+    let finalTCs = Object.values(telecallerMap);
+    let finalTLs = Object.values(teamLeadMap);
+    
+    if (reportFilterDomain !== 'all' || reportFilterTemplate !== 'all') {
+      finalTCs = finalTCs.filter(tc => tc.assigned > 0);
+      finalTLs = finalTLs.filter(tl => tl.totalEntries > 0);
+    }
+    
+    setDataTelecallers(finalTCs.sort((a,b) => b.assigned - a.assigned));
+    setDataTeamLeads(finalTLs.sort((a,b) => b.totalEntries - a.totalEntries));
+
+  }, [rawSubmissions, rawCallLogs, rawTeamLeads, rawTelecallers, reportFilterDomain, reportFilterTemplate, tcNameMapState, surveyorToTlMapState]);
+
+  useEffect(() => {
     setMasterDumpPage(1);
-  }, [filterDomain, filterFormStatus, filterLeadStatus, globalStartDate, globalEndDate]);
+  }, [filterDomain, filterFormStatus, filterLeadStatus, filterTemplate, globalStartDate, globalEndDate]);
   
   const handleClearDates = () => {
     setGlobalStartDate('');
@@ -247,6 +429,8 @@ export default function MasterReports() {
           }
         });
       }
+      setSurveyorToTlMapState(surveyorToTlMap);
+      setRawTeamLeads(allTeamLeads || []);
 
       // Pre-fetch all telecallers to ensure they show up in the report even with 0 leads
       const { data: allTelecallers } = await supabase
@@ -271,6 +455,7 @@ export default function MasterReports() {
       submissions.forEach(sub => {
         if (sub.telecaller_id && !tcNameMap.has(sub.telecaller_id)) tcIdsToFetch.add(sub.telecaller_id);
       });
+      let completeTcList: any[] = allTelecallers ? [...allTelecallers] : [];
       if (tcIdsToFetch.size > 0) {
         const { data: tcData } = await supabase.from('surveyors').select('id, full_name').in('id', Array.from(tcIdsToFetch));
         tcData?.forEach(tc => {
@@ -283,7 +468,47 @@ export default function MasterReports() {
             };
           }
         });
+        if (tcData) {
+           completeTcList = [...completeTcList, ...tcData];
+        }
       }
+      setTcNameMapState(tcNameMap);
+      setRawTelecallers(completeTcList);
+      setRawSubmissions(submissions);
+      setRawCallLogs(callLogs);
+      
+      const fhMap: Record<string, FileHandlerData> = {};
+      const { data: fhData } = await supabase
+        .from('surveyors')
+        .select('id, full_name, team_lead_ids, user_roles!inner(name)')
+        .ilike('user_roles.name', '%File Handler%');
+        
+      if (fhData) {
+        fhData.forEach((fh: any) => {
+          fhMap[fh.id] = { id: fh.id, name: fh.full_name, assignedLeads: 0, totalSubmitted: 0, totalClosed: 0, team_lead_ids: fh.team_lead_ids || [] };
+        });
+      }
+
+      let fsQuery = supabase.from('file_submissions').select('*');
+      if (start) fsQuery = fsQuery.gte('updated_at', startOfDay(parseLocalDate(start)).toISOString());
+      if (end) fsQuery = fsQuery.lte('updated_at', endOfDay(parseLocalDate(end)).toISOString());
+      
+      const { data: fileSubsData } = await fsQuery;
+      if (fileSubsData) {
+        fileSubsData.forEach((fs: any) => {
+          if (fhMap[fs.file_handler_id]) {
+            if (fs.status === 'submitted' || fs.status === 'closed') {
+              fhMap[fs.file_handler_id].totalSubmitted += 1;
+            }
+            if (fs.status === 'closed') {
+               fhMap[fs.file_handler_id].totalClosed += 1;
+            }
+          }
+        });
+      }
+      
+      setDataFileHandlers(Object.values(fhMap).sort((a,b) => b.totalSubmitted - a.totalSubmitted));
+
       const callLogMap: Record<string, CallLogData> = {};
       callLogs.forEach((log: any) => {
         const tcId = log.telecaller_id;
@@ -416,7 +641,15 @@ export default function MasterReports() {
 
           if (bucket === 'new') tlMap.newLeads += 1;
           else if (bucket === 'immediate') tlMap.immediate += 1;
-          else if (bucket === 'closed') tlMap.closed += 1;
+          else if (bucket === 'closed') {
+            tlMap.closed += 1;
+            // Also increment assignedLeads for File Handlers mapped to this TL
+            Object.values(fhMap).forEach(fh => {
+              if (fh.team_lead_ids && fh.team_lead_ids.includes(actualTl.id)) {
+                fh.assignedLeads += 1;
+              }
+            });
+          }
           else if (bucket === 'deleted') tlMap.deleted += 1;
           else if (bucket === 'wrong_number') tlMap.wrongNumber += 1;
           else if (bucket === 'reverted') tlMap.reverted += 1;
@@ -522,16 +755,19 @@ export default function MasterReports() {
       sheetName = 'By Surveyor';
     } else if (activeTab === 'teamlead') {
       dataToExport = dataTeamLeads.map(d => {
-        const called = Math.max(0, d.assigned - (d.newLeads || 0));
-        const inLoop = Math.max(0, called - d.closed - d.wrongNumber - d.reverted - d.deleted);
+        const pending = d.newLeads || 0;
+        const called = Math.max(0, d.assigned - pending);
+        const inLoop = Math.max(0, called - d.immediate - d.wrongNumber - d.reverted - d.closed - d.deleted);
         return {
-          'Team Lead': d.name,
-          'Total Entries Managed': d.totalEntries,
-          'Assigned to TC': d.assigned,
-          'Called': called,
-          'In Loop': inLoop,
+          'TL Name': d.name,
+          'Assigned lead': d.assigned,
+          'Pending to call': pending,
+          'Imme': d.immediate,
+          'Wrong': d.wrongNumber,
+          'Reverted': d.reverted,
           'Closed': d.closed,
-          'Deleted': d.deleted
+          'Deleted': d.deleted,
+          'No. in Loop': inLoop
         };
       });
       sheetName = 'By Team Lead';
@@ -565,6 +801,14 @@ export default function MasterReports() {
         'Reverted': d.reverted
       }));
       sheetName = 'Outcome By Telecaller';
+    } else if (activeTab === 'filehandler') {
+      dataToExport = dataFileHandlers.map(d => ({
+        'File Handler': d.name,
+        'Leads Assigned (Closed by TL)': d.assignedLeads,
+        'Files Opened by Handler': d.totalSubmitted,
+        'Files Closed by Handler': d.totalClosed
+      }));
+      sheetName = 'File Handler Performance';
     } else {
       dataToExport = masterDump.map(({ _raw, ...rest }) => rest);
       sheetName = 'Master Dump';
@@ -619,6 +863,7 @@ export default function MasterReports() {
     { id: 'teamlead', label: 'By Team Lead', icon: Building2 },
     { id: 'telecaller', label: 'By Telecaller', icon: PhoneCall },
     { id: 'outcome', label: 'Outcome By Telecaller', icon: PieChart },
+    { id: 'filehandler', label: 'File Handler Performance', icon: FileCheck },
     { id: 'master', label: 'Master Dump', icon: Database },
   ];
 
@@ -718,6 +963,35 @@ export default function MasterReports() {
             <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Top Performer</div>
             <div className="text-lg font-bold text-accent-green tracking-tight truncate" title={topSurveyor}>{topSurveyor}</div>
             <div className="text-xs text-text-muted mt-1 flex items-center">Highest submission count</div>
+          </Card>
+        </>
+      );
+    }
+    
+    if (activeTab === 'filehandler') {
+      const totalFH = dataFileHandlers.length;
+      const totalSub = dataFileHandlers.reduce((acc, curr) => acc + curr.totalSubmitted, 0);
+      const totalCls = dataFileHandlers.reduce((acc, curr) => acc + curr.totalClosed, 0);
+
+      return (
+        <>
+          <Card className="p-4">
+            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total File Handlers</div>
+            <div className="text-2xl font-bold text-white tracking-tight">{totalFH.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1 flex items-center">Active file handlers</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Files Submitted</div>
+            <div className="text-2xl font-bold text-accent-blue tracking-tight">{totalSub.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1 flex items-center">Forms submitted by handlers</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Files Closed</div>
+            <div className="text-2xl font-bold text-accent-green tracking-tight">{totalCls.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1 flex items-center">Files closed completely</div>
+          </Card>
+          <Card className="p-4 opacity-0 hidden md:block">
+            {/* Empty card for layout */}
           </Card>
         </>
       );
@@ -859,6 +1133,17 @@ export default function MasterReports() {
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
+
+              <select 
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={filterTemplate}
+                onChange={(e) => setFilterTemplate(e.target.value)}
+              >
+                <option value="all">All Templates</option>
+                {Array.from(new Set(masterDump.map(d => d.Template))).sort().map(t => (
+                  <option key={t as string} value={t as string}>{t as string}</option>
+                ))}
+              </select>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -892,7 +1177,8 @@ export default function MasterReports() {
                     const filteredDump = masterDump.filter(d => 
                       (filterDomain === 'all' || d.Domain === filterDomain) &&
                       (filterFormStatus === 'all' || d.Status === filterFormStatus) &&
-                      (filterLeadStatus === 'all' || d['Lead Status'] === filterLeadStatus)
+                      (filterLeadStatus === 'all' || d['Lead Status'] === filterLeadStatus) &&
+                      (filterTemplate === 'all' || d.Template === filterTemplate)
                     );
                     
                     if (filteredDump.length === 0) {
@@ -999,24 +1285,46 @@ export default function MasterReports() {
         </Card>
       ) : activeTab === 'teamlead' ? (
         <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
-          <div className="p-5 border-b border-bg-border">
-            <h3 className="text-sm font-semibold text-white">Team Lead Performance Report</h3>
-            <p className="text-xs text-text-muted mt-1">Review team lead submission volumes and lead dispositions.</p>
+          <div className="p-5 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Team Lead Performance Report</h3>
+              <p className="text-xs text-text-muted mt-1">Review team lead submission volumes and lead dispositions.</p>
+            </div>
+            <div className="flex gap-3 flex-wrap">
+              <select
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={reportFilterDomain}
+                onChange={(e) => setReportFilterDomain(e.target.value)}
+              >
+                <option value="all">All Domains</option>
+                {dataDomains.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+              </select>
+              <select
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={reportFilterTemplate}
+                onChange={(e) => setReportFilterTemplate(e.target.value)}
+              >
+                <option value="all">All Templates</option>
+                {Array.from(new Set(masterDump.map(d => d.Template))).sort().map(t => <option key={t as string} value={t as string}>{t as string}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
-                <tr className="text-text-muted text-[10px] uppercase tracking-widest">
-                  <th className="py-3 px-4 font-semibold">Team Lead</th>
-                  <th className="py-3 px-4 font-semibold text-center">Total Entries</th>
-                  <th className="py-3 px-4 font-semibold text-center">Assigned to TC</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Called</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-yellow">In Loop</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-red">Immediate</th>
-                  <th className="py-3 px-4 font-semibold text-center text-orange-400">Wrong No.</th>
-                  <th className="py-3 px-4 font-semibold text-center text-purple-400">Reverted</th>
-                  <th className="py-3 px-4 font-semibold text-center text-accent-green">Closed</th>
-                  <th className="py-3 px-4 font-semibold text-center text-red-500">Deleted</th>
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest text-center border-b border-bg-border/50">
+                  <th rowSpan={2} className="py-3 px-4 font-semibold text-left border-r border-bg-border/50">TL Name</th>
+                  <th rowSpan={2} className="py-3 px-4 font-semibold border-r border-bg-border/50">Assigned lead</th>
+                  <th rowSpan={2} className="py-3 px-4 font-semibold text-accent-blue border-r border-bg-border/50">Pending to call</th>
+                  <th colSpan={5} className="py-2 px-4 font-semibold text-white border-b border-r border-bg-border/50">Outcome of called No.</th>
+                  <th rowSpan={2} className="py-3 px-4 font-semibold text-accent-yellow">No. in Loop</th>
+                </tr>
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest text-center">
+                  <th className="py-2 px-3 font-semibold text-accent-red border-r border-bg-border/50">Imme</th>
+                  <th className="py-2 px-3 font-semibold text-orange-400 border-r border-bg-border/50">Wrong</th>
+                  <th className="py-2 px-3 font-semibold text-purple-400 border-r border-bg-border/50">Reverted</th>
+                  <th className="py-2 px-3 font-semibold text-accent-green border-r border-bg-border/50">Closed</th>
+                  <th className="py-2 px-3 font-semibold text-red-500 border-r border-bg-border/50">Deleted</th>
                 </tr>
               </thead>
               <tbody>
@@ -1030,19 +1338,18 @@ export default function MasterReports() {
                       className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer"
                       onClick={() => toggleTlRow(d.id)}
                     >
-                      <td className="py-3 px-4 text-white font-medium flex items-center gap-2">
+                      <td className="py-3 px-4 text-white font-medium flex items-center gap-2 border-r border-bg-border/50">
                         {expandedTlRows.has(d.id) ? <ChevronDown className="w-4 h-4 text-text-muted" /> : <ChevronRight className="w-4 h-4 text-text-muted" />}
                         {d.name}
                       </td>
-                      <td className="py-3 px-4 text-center font-bold text-white">{d.totalEntries.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-text-secondary">{d.assigned.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-blue">{Math.max(0, d.assigned - (d.newLeads || 0)).toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-yellow">{Math.max(0, (d.assigned - (d.newLeads || 0)) - d.closed - d.wrongNumber - d.reverted - d.deleted).toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-red">{d.immediate.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-orange-400">{d.wrongNumber.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-purple-400">{d.reverted.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-green">{d.closed.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-red-500">{d.deleted.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-bold text-white border-r border-bg-border/50">{d.assigned.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-blue border-r border-bg-border/50">{d.newLeads.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-red border-r border-bg-border/50">{d.immediate.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-orange-400 border-r border-bg-border/50">{d.wrongNumber.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-purple-400 border-r border-bg-border/50">{d.reverted.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-green border-r border-bg-border/50">{d.closed.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-red-500 border-r border-bg-border/50">{d.deleted.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-yellow">{Math.max(0, (d.assigned - (d.newLeads || 0)) - d.immediate - d.wrongNumber - d.reverted - d.closed - d.deleted).toLocaleString()}</td>
                     </tr>
                     {expandedTlRows.has(d.id) && Object.keys(d.telecallers).length > 0 && (
                       <tr className="bg-bg-primary border-b border-bg-border">
@@ -1052,29 +1359,29 @@ export default function MasterReports() {
                             <table className="w-full text-left border-collapse text-xs">
                               <thead>
                                 <tr className="text-text-muted border-b border-bg-border/50 uppercase tracking-widest text-[9px]">
-                                  <th className="py-2 px-3 font-semibold">Telecaller Name</th>
-                                  <th className="py-2 px-3 font-semibold text-center">Assigned Leads</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-blue">Called</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-yellow">In Loop</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-red">Immediate</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-orange-400">Wrong No.</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-purple-400">Reverted</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-accent-green">Closed</th>
-                                  <th className="py-2 px-3 font-semibold text-center text-red-500">Deleted</th>
+                                  <th className="py-2 px-3 font-semibold border-r border-bg-border/50">TC Name</th>
+                                  <th className="py-2 px-3 font-semibold text-center border-r border-bg-border/50">Assigned Lead</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-blue border-r border-bg-border/50">Pending to call</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-red border-r border-bg-border/50">Imme</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-orange-400 border-r border-bg-border/50">Wrong</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-purple-400 border-r border-bg-border/50">Reverted</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-green border-r border-bg-border/50">Closed</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-red-500 border-r border-bg-border/50">Deleted</th>
+                                  <th className="py-2 px-3 font-semibold text-center text-accent-yellow">No. in Loop</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {Object.values(d.telecallers).sort((a,b) => b.assigned - a.assigned).map((tc, tcIdx) => (
                                   <tr key={tcIdx} className="border-b border-bg-border/50 last:border-0 hover:bg-bg-hover/30">
-                                    <td className="py-2 px-3 text-white font-medium">{tc.name}</td>
-                                    <td className="py-2 px-3 text-center text-text-secondary font-medium">{tc.assigned}</td>
-                                    <td className="py-2 px-3 text-center text-accent-blue font-medium">{Math.max(0, tc.assigned - (tc.newLeads || 0))}</td>
-                                    <td className="py-2 px-3 text-center text-accent-yellow font-medium">{Math.max(0, (tc.assigned - (tc.newLeads || 0)) - tc.closed - tc.wrongNumber - tc.reverted - tc.deleted)}</td>
-                                    <td className="py-2 px-3 text-center text-accent-red font-medium">{tc.immediate}</td>
-                                    <td className="py-2 px-3 text-center text-orange-400 font-medium">{tc.wrongNumber}</td>
-                                    <td className="py-2 px-3 text-center text-purple-400 font-medium">{tc.reverted}</td>
-                                    <td className="py-2 px-3 text-center text-accent-green font-medium">{tc.closed}</td>
-                                    <td className="py-2 px-3 text-center text-red-500 font-medium">{tc.deleted}</td>
+                                    <td className="py-2 px-3 text-white font-medium border-r border-bg-border/50">{tc.name}</td>
+                                    <td className="py-2 px-3 text-center text-text-secondary font-medium border-r border-bg-border/50">{tc.assigned}</td>
+                                    <td className="py-2 px-3 text-center text-accent-blue font-medium border-r border-bg-border/50">{tc.newLeads}</td>
+                                    <td className="py-2 px-3 text-center text-accent-red font-medium border-r border-bg-border/50">{tc.immediate}</td>
+                                    <td className="py-2 px-3 text-center text-orange-400 font-medium border-r border-bg-border/50">{tc.wrongNumber}</td>
+                                    <td className="py-2 px-3 text-center text-purple-400 font-medium border-r border-bg-border/50">{tc.reverted}</td>
+                                    <td className="py-2 px-3 text-center text-accent-green font-medium border-r border-bg-border/50">{tc.closed}</td>
+                                    <td className="py-2 px-3 text-center text-red-500 font-medium border-r border-bg-border/50">{tc.deleted}</td>
+                                    <td className="py-2 px-3 text-center text-accent-yellow font-medium">{Math.max(0, (tc.assigned - (tc.newLeads || 0)) - tc.immediate - tc.wrongNumber - tc.reverted - tc.closed - tc.deleted)}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -1121,9 +1428,29 @@ export default function MasterReports() {
         </Card>
       ) : activeTab === 'telecaller' ? (
         <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
-          <div className="p-5 border-b border-bg-border">
-            <h3 className="text-sm font-semibold text-white">Telecaller Performance Report</h3>
-            <p className="text-xs text-text-muted mt-1">Review overall lead conversion and handling metrics per telecaller.</p>
+          <div className="p-5 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Telecaller Performance Report</h3>
+              <p className="text-xs text-text-muted mt-1">Review overall lead conversion and handling metrics per telecaller.</p>
+            </div>
+            <div className="flex gap-3 flex-wrap">
+              <select
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={reportFilterDomain}
+                onChange={(e) => setReportFilterDomain(e.target.value)}
+              >
+                <option value="all">All Domains</option>
+                {dataDomains.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+              </select>
+              <select
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={reportFilterTemplate}
+                onChange={(e) => setReportFilterTemplate(e.target.value)}
+              >
+                <option value="all">All Templates</option>
+                {Array.from(new Set(masterDump.map(d => d.Template))).sort().map(t => <option key={t as string} value={t as string}>{t as string}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse text-sm">
@@ -1166,9 +1493,29 @@ export default function MasterReports() {
         </Card>
       ) : activeTab === 'outcome' ? (
         <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
-          <div className="p-5 border-b border-bg-border">
-            <h3 className="text-sm font-semibold text-white">Outcome By Telecaller</h3>
-            <p className="text-xs text-text-muted mt-1">Review the strict status counts of leads assigned in the selected date range.</p>
+          <div className="p-5 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Outcome By Telecaller</h3>
+              <p className="text-xs text-text-muted mt-1">Review the strict status counts of leads assigned in the selected date range.</p>
+            </div>
+            <div className="flex gap-3 flex-wrap">
+              <select
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={reportFilterDomain}
+                onChange={(e) => setReportFilterDomain(e.target.value)}
+              >
+                <option value="all">All Domains</option>
+                {dataDomains.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+              </select>
+              <select
+                className="bg-bg-secondary border border-bg-border text-white text-sm rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-accent-blue outline-none"
+                value={reportFilterTemplate}
+                onChange={(e) => setReportFilterTemplate(e.target.value)}
+              >
+                <option value="all">All Templates</option>
+                {Array.from(new Set(masterDump.map(d => d.Template))).sort().map(t => <option key={t as string} value={t as string}>{t as string}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse text-sm">
@@ -1204,6 +1551,39 @@ export default function MasterReports() {
                   </tr>
                 )) : (
                   <tr><td colSpan={10} className="py-8 text-center text-text-muted">No outcome data available.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : activeTab === 'filehandler' ? (
+        <Card className="flex flex-col p-0 overflow-hidden min-h-[400px]">
+          <div className="p-5 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white">File Handler Performance</h3>
+              <p className="text-xs text-text-muted mt-1">Review submission and closure metrics for File Handlers.</p>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead className="sticky top-0 bg-bg-secondary border-b border-bg-border shadow-sm z-10">
+                <tr className="text-text-muted text-[10px] uppercase tracking-widest">
+                  <th className="py-3 px-4 font-semibold">File Handler</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-blue">Leads Assigned (Closed by TL)</th>
+                  <th className="py-3 px-4 font-semibold text-center text-white">Files Opened by Handler</th>
+                  <th className="py-3 px-4 font-semibold text-center text-accent-green">Files Closed by Handler</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataFileHandlers.length > 0 ? dataFileHandlers.map((d, i) => (
+                  <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors">
+                    <td className="py-3 px-4 text-white font-medium">{d.name}</td>
+                    <td className="py-3 px-4 text-center text-accent-blue font-bold">{d.assignedLeads}</td>
+                    <td className="py-3 px-4 text-center text-white font-bold">{d.totalSubmitted.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center text-accent-green font-bold">{d.totalClosed.toLocaleString()}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={4} className="py-8 text-center text-text-muted">No file handler data available.</td></tr>
                 )}
               </tbody>
             </table>

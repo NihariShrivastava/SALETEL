@@ -19,6 +19,11 @@ export default function Submissions() {
   
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [domains, setDomains] = useState<any[]>([]);
+  const [fileHandlers, setFileHandlers] = useState<any[]>([]);
+  const [fileForms, setFileForms] = useState<any[]>([]);
+
+  const [selectedFileHandler, setSelectedFileHandler] = useState('all');
+  const [selectedFileForm, setSelectedFileForm] = useState('all');
   
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [adminNotes, setAdminNotes] = useState('');
@@ -26,9 +31,11 @@ export default function Submissions() {
 
   const fetchData = async () => {
     try {
-      const [subsRes, domainsRes] = await Promise.all([
-        supabase.from('submissions').select('*, surveyors!surveyor_id(full_name), domains(id, name), form_templates(fields)').order('submitted_at', { ascending: false }),
-        supabase.from('domains').select('id, name').or('is_deleted.is.null,is_deleted.eq.false')
+      const [subsRes, domainsRes, fhRes, formsRes] = await Promise.all([
+        supabase.from('submissions').select('*, surveyors!surveyor_id(full_name), domains(id, name), form_templates(fields), file_submissions(file_handler_id, file_form_template_id)').order('submitted_at', { ascending: false }),
+        supabase.from('domains').select('id, name').or('is_deleted.is.null,is_deleted.eq.false'),
+        supabase.from('surveyors').select('id, full_name, user_roles!inner(name)').ilike('user_roles.name', '%File Handler%'),
+        supabase.from('file_form_templates').select('id, name').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false')
       ]);
 
       if (subsRes.error) throw subsRes.error;
@@ -36,6 +43,8 @@ export default function Submissions() {
 
       setSubmissions(subsRes.data || []);
       setDomains(domainsRes.data || []);
+      setFileHandlers(fhRes.data || []);
+      setFileForms(formsRes.data || []);
     } catch (err) {
       console.error(err);
       toast.error('Failed to load submissions');
@@ -63,7 +72,18 @@ export default function Submissions() {
     const matchesSearch = (sub.surveyors?.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || sub.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesDomain = selectedDomain === 'all' || sub.domain_id === selectedDomain;
     const matchesStatus = selectedStatus === 'all' || sub.status === selectedStatus;
-    return matchesSearch && matchesDomain && matchesStatus;
+    
+    let matchesFH = true;
+    if (selectedFileHandler !== 'all') {
+      matchesFH = sub.file_submissions && Array.isArray(sub.file_submissions) && sub.file_submissions.some((fs: any) => fs.file_handler_id === selectedFileHandler);
+    }
+
+    let matchesFF = true;
+    if (selectedFileForm !== 'all') {
+      matchesFF = sub.file_submissions && Array.isArray(sub.file_submissions) && sub.file_submissions.some((fs: any) => fs.file_form_template_id === selectedFileForm);
+    }
+
+    return matchesSearch && matchesDomain && matchesStatus && matchesFH && matchesFF;
   });
 
   const totalPages = Math.ceil(filteredSubmissions.length / itemsPerPage);
@@ -107,6 +127,26 @@ export default function Submissions() {
                 <option value="all">All Statuses</option>
                 <option value="submitted">Submitted</option>
                 <option value="rejected">Rejected</option>
+              </select>
+              <select 
+                className="bg-bg-primary border border-bg-border text-text-secondary text-xs rounded-lg px-3 py-2 focus:border-accent-blue focus:outline-none"
+                value={selectedFileForm}
+                onChange={e => { setSelectedFileForm(e.target.value); setCurrentPage(1); }}
+              >
+                <option value="all">All File Forms</option>
+                {fileForms.map(ff => (
+                  <option key={ff.id} value={ff.id}>{ff.name}</option>
+                ))}
+              </select>
+              <select 
+                className="bg-bg-primary border border-bg-border text-text-secondary text-xs rounded-lg px-3 py-2 focus:border-accent-blue focus:outline-none"
+                value={selectedFileHandler}
+                onChange={e => { setSelectedFileHandler(e.target.value); setCurrentPage(1); }}
+              >
+                <option value="all">All File Handlers</option>
+                {fileHandlers.map(fh => (
+                  <option key={fh.id} value={fh.id}>{fh.full_name}</option>
+                ))}
               </select>
             </div>
             <div className="relative w-64">

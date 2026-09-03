@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { UserCog, Trash2, Search, Edit2, ChevronDown, Users, PhoneCall, ClipboardCheck } from 'lucide-react';
+import { UserCog, Trash2, Search, Edit2, ChevronDown, Users, PhoneCall, ClipboardCheck, FolderOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import type { Surveyor, Domain, UserRole, Counter, FormTemplate } from '../../types';
+import type { Surveyor, Domain, UserRole, Counter, FormTemplate, FileFormTemplate } from '../../types';
 
 interface SurveyorExtended extends Surveyor {
   user_role?: { name: string };
@@ -24,6 +24,7 @@ export default function SurveyorManagement() {
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [counters, setCounters] = useState<Counter[]>([]);
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
+  const [fileTemplates, setFileTemplates] = useState<FileFormTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Form state
@@ -44,6 +45,7 @@ export default function SurveyorManagement() {
   const [assignedTeamLeads, setAssignedTeamLeads] = useState<string[]>([]);
   const [assignedTelecallers, setAssignedTelecallers] = useState<string[]>([]);
   const [assignedUsers, setAssignedUsers] = useState<string[]>([]); // For Team Leads and Telecallers to pick their subordinates
+  const [assignedFileTemplateId, setAssignedFileTemplateId] = useState<string>('');
 
   // Dropdown toggles
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -59,12 +61,14 @@ export default function SurveyorManagement() {
         { data: urData },
         { data: cData },
         { data: tData },
+        { data: ftData },
         { data: sData, error }
       ] = await Promise.all([
         supabase.from('domains').select('*').or('is_deleted.is.null,is_deleted.eq.false'),
         supabase.from('user_roles').select('*'),
         supabase.from('counters').select('*'),
         supabase.from('form_templates').select('id, name, domain_id').or('is_deleted.is.null,is_deleted.eq.false'),
+        supabase.from('file_form_templates').select('id, name').or('is_deleted.is.null,is_deleted.eq.false'),
         supabase.from('surveyors').select('*, user_role:user_roles(name)').order('created_at', { ascending: false })
       ]);
 
@@ -74,6 +78,7 @@ export default function SurveyorManagement() {
       setUserRoles(urData || []);
       setCounters(cData || []);
       setTemplates((tData as any) || []);
+      setFileTemplates((ftData as any) || []);
       setSurveyors(sData || []);
     } catch (error) {
       console.error(error);
@@ -102,7 +107,8 @@ export default function SurveyorManagement() {
         counter_ids: assignedCounters,
         team_lead_ids: assignedTeamLeads,
         telecaller_ids: assignedTelecallers,
-        assigned_users: assignedUsers
+        assigned_users: assignedUsers,
+        assigned_file_template_id: assignedFileTemplateId || null
       };
 
       if (editingId) {
@@ -140,6 +146,7 @@ export default function SurveyorManagement() {
     setAssignedTeamLeads([]);
     setAssignedTelecallers([]);
     setAssignedUsers([]);
+    setAssignedFileTemplateId('');
     setOpenDropdown(null);
   };
 
@@ -158,6 +165,7 @@ export default function SurveyorManagement() {
     setAssignedTeamLeads(surv.team_lead_ids || []);
     setAssignedTelecallers(surv.telecaller_ids || []);
     setAssignedUsers(surv.assigned_users || []);
+    setAssignedFileTemplateId(surv.assigned_file_template_id || '');
   };
 
   const confirmDelete = async () => {
@@ -257,34 +265,37 @@ export default function SurveyorManagement() {
               const isSurveyor = selectedRoleName.includes('surveyor');
               const isTelecaller = selectedRoleName.includes('telecaller');
               const isTeamLead = selectedRoleName.includes('team lead');
+              const isFileHandler = selectedRoleName.includes('file handler');
               
               if (!selectedUserRoleId) return null;
 
               return (
                 <>
                   {/* Common: Assigned Counters */}
-                  <div className="space-y-1.5 relative">
-                    <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Assigned Counters</label>
-                    <div className="relative">
-                      <button type="button" onClick={() => toggleDropdown('counters')} className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2 text-white text-sm flex items-center justify-between">
-                        <span className="truncate">{assignedCounters.length === 0 ? "Select Counters..." : `${assignedCounters.length} selected`}</span>
-                        <ChevronDown className="w-4 h-4" />
-                      </button>
-                      {openDropdown === 'counters' && (
-                        <div className="absolute top-full mt-1 w-full bg-bg-primary border border-bg-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto p-2 space-y-1">
-                          {counters.length === 0 && <p className="text-xs text-text-muted p-2">No counters found.</p>}
-                          {counters.map(c => (
-                            <label key={c.id} className="flex items-center gap-3 cursor-pointer p-2 hover:bg-bg-secondary rounded">
-                              <input type="checkbox" checked={assignedCounters.includes(c.id)} onChange={(e) => {
-                                setAssignedCounters(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id));
-                              }} />
-                              <span className="text-sm text-white">{c.username}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
+                  {!isFileHandler && (
+                    <div className="space-y-1.5 relative">
+                      <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Assigned Counters</label>
+                      <div className="relative">
+                        <button type="button" onClick={() => toggleDropdown('counters')} className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2 text-white text-sm flex items-center justify-between">
+                          <span className="truncate">{assignedCounters.length === 0 ? "Select Counters..." : `${assignedCounters.length} selected`}</span>
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                        {openDropdown === 'counters' && (
+                          <div className="absolute top-full mt-1 w-full bg-bg-primary border border-bg-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto p-2 space-y-1">
+                            {counters.length === 0 && <p className="text-xs text-text-muted p-2">No counters found.</p>}
+                            {counters.map(c => (
+                              <label key={c.id} className="flex items-center gap-3 cursor-pointer p-2 hover:bg-bg-secondary rounded">
+                                <input type="checkbox" checked={assignedCounters.includes(c.id)} onChange={(e) => {
+                                  setAssignedCounters(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id));
+                                }} />
+                                <span className="text-sm text-white">{c.username}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Surveyor Only: Domains, Templates, Team Leads, Telecallers */}
                   {isSurveyor && (
@@ -412,6 +423,48 @@ export default function SurveyorManagement() {
                       </>
                     );
                   })()}
+                  {/* File Handler: Team Leads & File Form */}
+                  {isFileHandler && (
+                    <>
+                      <div className="space-y-1.5 relative">
+                        <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Assign Team Leads</label>
+                        <div className="relative">
+                          <button type="button" onClick={() => toggleDropdown('assignTeamLeads')} className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2 text-white text-sm flex items-center justify-between">
+                            <span className="truncate">{assignedTeamLeads.length === 0 ? "Select Team Leads..." : `${assignedTeamLeads.length} selected`}</span>
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
+                          {openDropdown === 'assignTeamLeads' && (
+                            <div className="absolute top-full mt-1 w-full bg-bg-primary border border-bg-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto p-2 space-y-1">
+                              {teamLeadsList.length === 0 && <p className="text-xs text-text-muted p-2">No team leads found.</p>}
+                              {teamLeadsList.map(opt => (
+                                  <label key={opt.id} className="flex items-center gap-3 cursor-pointer p-2 hover:bg-bg-secondary rounded">
+                                    <input type="checkbox" checked={assignedTeamLeads.includes(opt.id)} onChange={(e) => {
+                                      setAssignedTeamLeads(prev => e.target.checked ? [...prev, opt.id] : prev.filter(id => id !== opt.id));
+                                    }} />
+                                    <span className="text-sm text-white">{opt.full_name}</span>
+                                  </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 mt-4">
+                        <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Assign File Form</label>
+                        <select 
+                          value={assignedFileTemplateId} 
+                          onChange={e => setAssignedFileTemplateId(e.target.value)}
+                          className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2 text-white text-sm focus:border-accent-blue focus:outline-none"
+                          required
+                        >
+                          <option value="">Select File Form...</option>
+                          {fileTemplates.map(ft => (
+                            <option key={ft.id} value={ft.id}>{ft.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
                 </>
               );
             })()}
@@ -506,6 +559,7 @@ export default function SurveyorManagement() {
                               if (r.includes('team lead')) return <Users className="w-4 h-4 text-accent-purple" />;
                               if (r.includes('telecaller')) return <PhoneCall className="w-4 h-4 text-accent-yellow" />;
                               if (r.includes('surveyor')) return <ClipboardCheck className="w-4 h-4 text-accent-blue" />;
+                              if (r.includes('file handler')) return <FolderOpen className="w-4 h-4 text-accent-green" />;
                               return <UserCog className="w-4 h-4 text-text-muted" />;
                             })()}
                           </div>
@@ -538,6 +592,14 @@ export default function SurveyorManagement() {
                             return (
                               <div className="text-xs text-text-secondary">
                                 <div>Counters: {surv.counter_ids?.length || 0}</div>
+                              </div>
+                            );
+                          }
+                          if (rName.includes('file handler')) {
+                            return (
+                              <div className="text-xs text-text-secondary">
+                                <div>Team Leads: {surv.team_lead_ids?.length || 0}</div>
+                                <div>File Form: {surv.assigned_file_template_id ? 'Assigned' : 'None'}</div>
                               </div>
                             );
                           }

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-type UserRole = 'admin' | 'surveyor' | 'counter' | 'telecaller' | 'team_lead' | null;
+type UserRole = 'admin' | 'surveyor' | 'counter' | 'telecaller' | 'team_lead' | 'file_handler' | null;
 
 interface AuthState {
   user: any | null; // Will type properly based on Surveyor or AdminUser later

@@ -92,6 +92,7 @@ export interface Surveyor {
   is_active: boolean;
   created_at: string;
   assigned_domains?: string[];
+  assigned_file_template_id?: string | null;
 }
 
 export interface Submission {
@@ -113,4 +114,30 @@ export interface Submission {
   lead_status?: string;
   telecaller_remark?: string | null;
   lead_status_updated_at?: string | null;
+}
+
+export interface FileFormTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  fields: FieldConfig[];
+  is_active: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  is_deleted?: boolean;
+}
+
+export interface FileSubmission {
+  id: string;
+  file_form_template_id: string;
+  file_handler_id: string;
+  original_lead_id: string;
+  data: Record<string, any>;
+  status: 'submitted' | 'closed';
+  submitted_at: string;
+  updated_at: string;
+  // joined relations
+  original_lead?: Submission;
+  file_form_template?: FileFormTemplate;
 }

@@ -16,6 +16,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard Overview' },
     { to: '/admin/submissions', icon: History, label: 'Submissions Log' },
     { to: '/admin/domains', icon: Users, label: 'Domain Management' },
+    { to: '/admin/file-forms', icon: FileText, label: 'File Form Management' },
     { to: '/admin/counters', icon: CheckSquare, label: 'Counter Management' },
     { to: '/admin/surveyors', icon: UserCog, label: 'Role Management' },
     { to: '/admin/settings', icon: Settings, label: 'Telecaller Lead Setting' },
