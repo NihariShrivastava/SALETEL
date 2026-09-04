@@ -125,7 +125,11 @@ export default function SurveyorManagement() {
       fetchData();
     } catch (error: any) {
       console.error(error);
-      toast.error(error.message || 'Failed to save user. Username might be taken.');
+      if (error.code === '23505' || (error.message && error.message.includes('surveyors_username_key'))) {
+        toast.error('Username already exists. Please choose a different username.');
+      } else {
+        toast.error(error.message || 'Failed to save user. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }

@@ -1,34 +1,35 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 
-// Pages - We will create these shortly
-import Login from './pages/Login';
-import AdminLayout from './pages/admin/AdminLayout';
-import Dashboard from './pages/admin/Dashboard';
-import DomainManagement from './pages/admin/DomainManagement';
-import FormTemplateBuilder from './pages/admin/FormTemplateBuilder';
-import FileFormManagement from './pages/admin/FileFormManagement';
-import FileFormBuilder from './pages/admin/FileFormBuilder';
-import SurveyorManagement from './pages/admin/SurveyorManagement';
-import CounterManagement from './pages/admin/CounterManagement';
-import Submissions from './pages/admin/Submissions';
-import MasterReports from './pages/admin/MasterReports';
-import LeadStatusCount from './pages/admin/LeadStatusCount';
-import CustomTemplateDashboard from './pages/admin/CustomTemplateDashboard';
-import SystemSettings from './pages/admin/SystemSettings';
+// Lazy load pages for better performance
+const Login = lazy(() => import('./pages/Login'));
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
+const Dashboard = lazy(() => import('./pages/admin/Dashboard'));
+const DomainManagement = lazy(() => import('./pages/admin/DomainManagement'));
+const FormTemplateBuilder = lazy(() => import('./pages/admin/FormTemplateBuilder'));
+const FileFormManagement = lazy(() => import('./pages/admin/FileFormManagement'));
+const FileFormBuilder = lazy(() => import('./pages/admin/FileFormBuilder'));
+const SurveyorManagement = lazy(() => import('./pages/admin/SurveyorManagement'));
+const CounterManagement = lazy(() => import('./pages/admin/CounterManagement'));
+const Submissions = lazy(() => import('./pages/admin/Submissions'));
+const MasterReports = lazy(() => import('./pages/admin/MasterReports'));
+const LeadStatusCount = lazy(() => import('./pages/admin/LeadStatusCount'));
+const CustomTemplateDashboard = lazy(() => import('./pages/admin/CustomTemplateDashboard'));
+const SystemSettings = lazy(() => import('./pages/admin/SystemSettings'));
 
-import SurveyorLayout from './pages/surveyor/SurveyorLayout';
-import SurveyorDashboard from './pages/surveyor/SurveyorDashboard';
-import SurveyorHistory from './pages/surveyor/SurveyorHistory';
-import FillForm from './pages/surveyor/FillForm';
+const SurveyorLayout = lazy(() => import('./pages/surveyor/SurveyorLayout'));
+const SurveyorDashboard = lazy(() => import('./pages/surveyor/SurveyorDashboard'));
+const SurveyorHistory = lazy(() => import('./pages/surveyor/SurveyorHistory'));
+const FillForm = lazy(() => import('./pages/surveyor/FillForm'));
 
-import SharedDashboardLayout from './components/layout/SharedDashboardLayout';
-import CounterDashboard from './pages/counter/CounterDashboard';
-import TeamLeadDashboard from './pages/teamlead/TeamLeadDashboard';
-import TLCustomTemplateDashboard from './pages/teamlead/TLCustomTemplateDashboard';
-import TelecallerDashboard from './pages/telecaller/TelecallerDashboard';
-import TelecallerLeadsDashboard from './pages/teamlead/TelecallerLeadsDashboard';
-import FileHandlerDashboard from './pages/filehandler/FileHandlerDashboard';
+const SharedDashboardLayout = lazy(() => import('./components/layout/SharedDashboardLayout'));
+const CounterDashboard = lazy(() => import('./pages/counter/CounterDashboard'));
+const TeamLeadDashboard = lazy(() => import('./pages/teamlead/TeamLeadDashboard'));
+const TLCustomTemplateDashboard = lazy(() => import('./pages/teamlead/TLCustomTemplateDashboard'));
+const TelecallerDashboard = lazy(() => import('./pages/telecaller/TelecallerDashboard'));
+const TelecallerLeadsDashboard = lazy(() => import('./pages/teamlead/TelecallerLeadsDashboard'));
+const FileHandlerDashboard = lazy(() => import('./pages/filehandler/FileHandlerDashboard'));
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, role } = useAuth();
@@ -69,8 +70,13 @@ function FileHandlerRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <Router>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+      <Suspense fallback={
+        <div className="flex h-screen items-center justify-center bg-gray-50">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        </div>
+      }>
+        <Routes>
+          <Route path="/login" element={<Login />} />
         
         {/* Admin Routes */}
         <Route path="/admin" element={
@@ -182,7 +188,8 @@ function App() {
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+        </Routes>
+      </Suspense>
     </Router>
   );
 }

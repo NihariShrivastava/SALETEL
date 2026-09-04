@@ -196,7 +196,7 @@ export default function MasterReports() {
       }
 
       let bucket = '';
-      if (sub.status === 'reverted') bucket = 'reverted';
+      if (sub.status === 'reverted' || ls === 'reverted_to_tl') bucket = 'reverted';
       else if (ls === 'closed') bucket = 'closed';
       else bucket = ls;
 
@@ -567,7 +567,7 @@ export default function MasterReports() {
         }
 
         let bucket = '';
-        if (sub.status === 'reverted') bucket = 'reverted';
+        if (sub.status === 'reverted' || ls === 'reverted_to_tl') bucket = 'reverted';
         else if (ls === 'closed') bucket = 'closed';
         else bucket = ls;
 
@@ -755,11 +755,11 @@ export default function MasterReports() {
     } else if (activeTab === 'teamlead') {
       dataToExport = dataTeamLeads.map(d => {
         const pending = d.newLeads || 0;
-        const called = Math.max(0, d.assigned - pending);
+        const called = Math.max(0, d.totalEntries - pending);
         const inLoop = Math.max(0, called - d.immediate - d.wrongNumber - d.reverted - d.closed - d.deleted);
         return {
           'TL Name': d.name,
-          'Assigned lead': d.assigned,
+          'Assigned lead': d.totalEntries,
           'Pending to call': pending,
           'Imme': d.immediate,
           'Wrong': d.wrongNumber,
@@ -1349,15 +1349,15 @@ export default function MasterReports() {
                         {expandedTlRows.has(d.id) ? <ChevronDown className="w-4 h-4 text-text-muted" /> : <ChevronRight className="w-4 h-4 text-text-muted" />}
                         {d.name}
                       </td>
-                      <td className="py-3 px-4 text-center font-bold text-white border-r border-bg-border">{d.assigned.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-bold text-white border-r border-bg-border">{d.totalEntries.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-accent-blue border-r border-bg-border">{d.newLeads.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-white border-r border-bg-border">{Math.max(0, d.assigned - (d.newLeads || 0)).toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-white border-r border-bg-border">{Math.max(0, d.totalEntries - (d.newLeads || 0)).toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-accent-red border-r border-bg-border">{d.immediate.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-orange-400 border-r border-bg-border">{d.wrongNumber.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-purple-400 border-r border-bg-border">{d.reverted.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-accent-green border-r border-bg-border">{d.closed.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center font-medium text-red-500 border-r border-bg-border">{d.deleted.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-center font-medium text-accent-yellow">{Math.max(0, (d.assigned - (d.newLeads || 0)) - d.immediate - d.wrongNumber - d.reverted - d.closed - d.deleted).toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center font-medium text-accent-yellow">{Math.max(0, (d.totalEntries - (d.newLeads || 0)) - d.immediate - d.wrongNumber - d.reverted - d.closed - d.deleted).toLocaleString()}</td>
                     </tr>
                     {expandedTlRows.has(d.id) && Object.keys(d.telecallers).length > 0 && (
                       <tr className="bg-bg-primary border-b border-bg-border">
