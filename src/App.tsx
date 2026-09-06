@@ -30,6 +30,8 @@ const TLCustomTemplateDashboard = lazy(() => import('./pages/teamlead/TLCustomTe
 const TelecallerDashboard = lazy(() => import('./pages/telecaller/TelecallerDashboard'));
 const TelecallerLeadsDashboard = lazy(() => import('./pages/teamlead/TelecallerLeadsDashboard'));
 const FileHandlerDashboard = lazy(() => import('./pages/filehandler/FileHandlerDashboard'));
+const CustomFileTemplateDashboard = lazy(() => import('./pages/admin/CustomFileTemplateDashboard'));
+const ManagerDashboard = lazy(() => import('./pages/manager/ManagerDashboard'));
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, role } = useAuth();
@@ -64,6 +66,12 @@ function TelecallerRoute({ children }: { children: React.ReactNode }) {
 function FileHandlerRoute({ children }: { children: React.ReactNode }) {
   const { user, role } = useAuth();
   if (!user || role !== 'file_handler') return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function ManagerRoute({ children }: { children: React.ReactNode }) {
+  const { user, role } = useAuth();
+  if (!user || role !== 'manager') return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -115,6 +123,11 @@ function App() {
         <Route path="/admin/reports/custom/:templateId" element={
           <AdminRoute>
             <CustomTemplateDashboard />
+          </AdminRoute>
+        } />
+        <Route path="/admin/reports/custom-file/:templateId" element={
+          <AdminRoute>
+            <CustomFileTemplateDashboard />
           </AdminRoute>
         } />
         <Route path="/admin/telecaller/:telecallerId" element={
@@ -186,6 +199,28 @@ function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<FileHandlerDashboard />} />
         </Route>
+
+        {/* Manager Routes */}
+        <Route path="/manager" element={
+          <ManagerRoute>
+            <SharedDashboardLayout title="Manager Portal" homePath="/manager/dashboard" maxWidth="max-w-[1600px]" />
+          </ManagerRoute>
+        }>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<ManagerDashboard />} />
+        </Route>
+
+        {/* Full screen Manager Custom Dashboard Routes (Read-only) */}
+        <Route path="/manager/analyze-surveyor/:templateId" element={
+          <ManagerRoute>
+            <CustomTemplateDashboard backPath="/manager/dashboard" isReadOnly={true} />
+          </ManagerRoute>
+        } />
+        <Route path="/manager/analyze-file/:templateId" element={
+          <ManagerRoute>
+            <CustomFileTemplateDashboard backPath="/manager/dashboard" isReadOnly={true} />
+          </ManagerRoute>
+        } />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

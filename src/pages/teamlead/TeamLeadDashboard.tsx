@@ -62,7 +62,8 @@ export default function TeamLeadDashboard() {
         .select(`
           *,
           surveyor:surveyors!surveyor_id(full_name, username),
-          form_templates(name, fields)
+          telecaller:surveyors!telecaller_id(id, full_name, username),
+          form_templates(name)
         `)
         .in('surveyor_id', user.assigned_users)
         .order('submitted_at', { ascending: false });
@@ -102,22 +103,6 @@ export default function TeamLeadDashboard() {
       }
 
       const uniqueTelecallerIds = Array.from(new Set(finalData.filter(s => s.telecaller_id).map(s => s.telecaller_id)));
-
-      if (uniqueTelecallerIds.length > 0) {
-        const { data: telecallersData } = await supabase
-          .from('surveyors')
-          .select('id, full_name, username')
-          .in('id', uniqueTelecallerIds);
-
-        if (telecallersData) {
-          // Add telecaller details to submissions manually
-          finalData.forEach(sub => {
-            if (sub.telecaller_id) {
-              sub.telecaller = telecallersData.find(t => t.id === sub.telecaller_id);
-            }
-          });
-        }
-      }
 
       // Fetch fresh assigned users for this TL and combine with any existing telecaller IDs
       const { data: tlData } = await supabase

@@ -21,7 +21,7 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         const [subsRes, surveyorsRes, rolesRes] = await Promise.all([
-          supabase.from('submissions').select('*, surveyors!surveyor_id(full_name), domains(name)').order('submitted_at', { ascending: false }),
+          supabase.from('submissions').select('id, submitted_at, status, surveyors!surveyor_id(full_name), domains(name)').order('submitted_at', { ascending: false }),
           supabase.from('surveyors').select('user_role_id').eq('is_active', true),
           supabase.from('user_roles').select('id, name')
         ]);
@@ -47,7 +47,7 @@ export default function Dashboard() {
           dateMap[dateStr] = (dateMap[dateStr] || 0) + 1;
 
           // Pie Chart aggregation
-          const domainName = sub.domains?.name || 'Unassigned';
+          const domainName = (sub as any).domains?.name || 'Unassigned';
           domainMap[domainName] = (domainMap[domainName] || 0) + 1;
         });
 

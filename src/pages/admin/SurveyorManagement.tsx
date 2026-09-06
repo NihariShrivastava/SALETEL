@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { UserCog, Trash2, Search, Edit2, ChevronDown, Users, PhoneCall, ClipboardCheck, FolderOpen } from 'lucide-react';
+import { UserCog, Trash2, Search, Edit2, ChevronDown, Users, PhoneCall, ClipboardCheck, FolderOpen, Briefcase } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -213,6 +213,11 @@ export default function SurveyorManagement() {
     const roleName = s.user_role?.name?.toLowerCase() || '';
     return roleName.includes('telecaller') && s.id !== editingId;
   });
+
+  const fileHandlersList = surveyors.filter(s => {
+    const roleName = s.user_role?.name?.toLowerCase() || '';
+    return roleName.includes('file handler') && s.id !== editingId;
+  });
   
   const subordinateOptions = surveyors.filter(s => {
     const roleName = s.user_role?.name?.toLowerCase() || '';
@@ -270,13 +275,14 @@ export default function SurveyorManagement() {
               const isTelecaller = selectedRoleName.includes('telecaller');
               const isTeamLead = selectedRoleName.includes('team lead');
               const isFileHandler = selectedRoleName.includes('file handler');
+              const isManager = selectedRoleName.includes('manager');
               
               if (!selectedUserRoleId) return null;
 
               return (
                 <>
                   {/* Common: Assigned Counters */}
-                  {!isFileHandler && (
+                  {!isFileHandler && !isManager && (
                     <div className="space-y-1.5 relative">
                       <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Assigned Counters</label>
                       <div className="relative">
@@ -469,6 +475,57 @@ export default function SurveyorManagement() {
                       </div>
                     </>
                   )}
+
+                  {/* Manager: Team Leads & File Handlers */}
+                  {isManager && (
+                    <>
+                      <div className="space-y-1.5 relative">
+                        <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Assign Team Leads</label>
+                        <div className="relative">
+                          <button type="button" onClick={() => toggleDropdown('assignManagerTLs')} className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2 text-white text-sm flex items-center justify-between">
+                            <span className="truncate">{assignedTeamLeads.length === 0 ? "Select Team Leads..." : `${assignedTeamLeads.length} selected`}</span>
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
+                          {openDropdown === 'assignManagerTLs' && (
+                            <div className="absolute top-full mt-1 w-full bg-bg-primary border border-bg-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto p-2 space-y-1">
+                              {teamLeadsList.length === 0 && <p className="text-xs text-text-muted p-2">No team leads found.</p>}
+                              {teamLeadsList.map(opt => (
+                                <label key={opt.id} className="flex items-center gap-3 cursor-pointer p-2 hover:bg-bg-secondary rounded">
+                                  <input type="checkbox" checked={assignedTeamLeads.includes(opt.id)} onChange={(e) => {
+                                    setAssignedTeamLeads(prev => e.target.checked ? [...prev, opt.id] : prev.filter(id => id !== opt.id));
+                                  }} />
+                                  <span className="text-sm text-white">{opt.full_name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 relative mt-4">
+                        <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Assign File Handlers</label>
+                        <div className="relative">
+                          <button type="button" onClick={() => toggleDropdown('assignManagerFHs')} className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2 text-white text-sm flex items-center justify-between">
+                            <span className="truncate">{assignedUsers.length === 0 ? "Select File Handlers..." : `${assignedUsers.length} selected`}</span>
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
+                          {openDropdown === 'assignManagerFHs' && (
+                            <div className="absolute top-full mt-1 w-full bg-bg-primary border border-bg-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto p-2 space-y-1">
+                              {fileHandlersList.length === 0 && <p className="text-xs text-text-muted p-2">No file handlers found.</p>}
+                              {fileHandlersList.map(opt => (
+                                <label key={opt.id} className="flex items-center gap-3 cursor-pointer p-2 hover:bg-bg-secondary rounded">
+                                  <input type="checkbox" checked={assignedUsers.includes(opt.id)} onChange={(e) => {
+                                    setAssignedUsers(prev => e.target.checked ? [...prev, opt.id] : prev.filter(id => id !== opt.id));
+                                  }} />
+                                  <span className="text-sm text-white">{opt.full_name}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               );
             })()}
@@ -564,6 +621,7 @@ export default function SurveyorManagement() {
                               if (r.includes('telecaller')) return <PhoneCall className="w-4 h-4 text-accent-yellow" />;
                               if (r.includes('surveyor')) return <ClipboardCheck className="w-4 h-4 text-accent-blue" />;
                               if (r.includes('file handler')) return <FolderOpen className="w-4 h-4 text-accent-green" />;
+                              if (r.includes('manager')) return <Briefcase className="w-4 h-4 text-indigo-400" />;
                               return <UserCog className="w-4 h-4 text-text-muted" />;
                             })()}
                           </div>
@@ -579,6 +637,14 @@ export default function SurveyorManagement() {
                       <td className="py-4 px-5">
                         {(() => {
                           const rName = surv.user_role?.name?.toLowerCase() || '';
+                          if (rName.includes('manager')) {
+                            return (
+                              <div className="text-xs text-text-secondary">
+                                <div>Team Leads: {surv.team_lead_ids?.length || 0}</div>
+                                <div>File Handlers: {surv.assigned_users?.length || 0}</div>
+                              </div>
+                            );
+                          }
                           if (rName.includes('team lead')) {
                             const assignedUserIds = surv.assigned_users || [];
                             const countersCount = surv.counter_ids?.length || 0;

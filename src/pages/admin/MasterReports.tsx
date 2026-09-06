@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Download, Filter, Database, Building2, Loader2, X, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, FileCheck } from 'lucide-react';
+import { Download, Filter, Database, Building2, Loader2, X, PieChart, FileText, PhoneCall, CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, FileCheck, FolderOpen, Calendar, Layers, Search, ArrowRight } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -100,8 +100,10 @@ export default function MasterReports() {
   const [masterDump, setMasterDump] = useState<any[]>([]);
   const [masterDumpPage, setMasterDumpPage] = useState(1);
   const masterDumpItemsPerPage = 20;
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [customDashboardTab, setCustomDashboardTab] = useState<'surveyor' | 'file'>('surveyor');
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [templates, setTemplates] = useState<any[]>([]);
+  const [fileTemplatesList, setFileTemplatesList] = useState<any[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [expandedTlRows, setExpandedTlRows] = useState<Set<string>>(new Set());
 
@@ -142,6 +144,7 @@ export default function MasterReports() {
 
   useEffect(() => {
     fetchData();
+    loadTemplates();
   }, []);
 
   useEffect(() => {
@@ -319,11 +322,14 @@ export default function MasterReports() {
   const fetchData = async (start = globalStartDate, end = globalEndDate) => {
     setIsLoading(true);
     try {
-      const { count: domainCount, error: domainError } = await supabase.from('domains').select('*', { count: 'exact', head: true }).or('is_deleted.is.null,is_deleted.eq.false');
-      if (domainError) throw domainError;
+      const parseLocalDate = (dateStr: string) => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
+      };
 
-      const { count: survCount, error: survError } = await supabase.from('surveyors').select('*', { count: 'exact', head: true });
-      if (survError) throw survError;
+      // 1. Build queries to execute concurrently
+      const domainCountQuery = supabase.from('domains').select('*', { count: 'exact', head: true }).or('is_deleted.is.null,is_deleted.eq.false');
+      const survCountQuery = supabase.from('surveyors').select('*', { count: 'exact', head: true });
 
       let subsQuery = supabase
         .from('submissions')
@@ -333,8 +339,7 @@ export default function MasterReports() {
           submitted_at,
           domains(name),
           surveyors!surveyor_id(username, full_name, user_roles(name)),
-          data,
-          form_templates(name, fields),
+          form_templates(name),
           reviewed_by,
           admin_notes,
           telecaller_id,
@@ -343,11 +348,6 @@ export default function MasterReports() {
           surveyor_id
         `);
 
-      const parseLocalDate = (dateStr: string) => {
-        const [year, month, day] = dateStr.split('-').map(Number);
-        return new Date(year, month - 1, day);
-      };
-
       if (start) {
         subsQuery = subsQuery.gte('lead_status_updated_at', startOfDay(parseLocalDate(start)).toISOString());
       }
@@ -355,16 +355,9 @@ export default function MasterReports() {
         subsQuery = subsQuery.lte('lead_status_updated_at', endOfDay(parseLocalDate(end)).toISOString());
       }
 
-      const { data: subData, error: subError } = await subsQuery;
-      
-      if (subError) throw subError;
-
-      const submissions = subData || [];
-
-      // Fetch call logs
       let logsQuery = supabase
         .from('lead_call_logs')
-        .select('*');
+        .select('telecaller_id, previous_status, new_status, created_at');
 
       if (start) {
         logsQuery = logsQuery.gte('created_at', startOfDay(parseLocalDate(start)).toISOString());
@@ -373,13 +366,51 @@ export default function MasterReports() {
         logsQuery = logsQuery.lte('created_at', endOfDay(parseLocalDate(end)).toISOString());
       }
 
-      const { data: logsData, error: logsError } = await logsQuery;
-        
+      // Single fast query for all staff members (Team Leads, Telecallers, File Handlers)
+      const staffQuery = supabase
+        .from('surveyors')
+        .select('id, full_name, username, assigned_users, team_lead_ids, user_roles(name)');
+
+      let fsQuery = supabase
+        .from('file_submissions')
+        .select('file_handler_id, original_lead_id, status, updated_at');
+
+      if (start) fsQuery = fsQuery.gte('updated_at', startOfDay(parseLocalDate(start)).toISOString());
+      if (end) fsQuery = fsQuery.lte('updated_at', endOfDay(parseLocalDate(end)).toISOString());
+
+      // Run all queries in parallel
+      const [
+        { count: domainCount, error: domainError },
+        { count: survCount, error: survError },
+        { data: subData, error: subError },
+        { data: logsData, error: logsError },
+        { data: allStaffData, error: staffError },
+        { data: fileSubsData, error: fsError }
+      ] = await Promise.all([
+        domainCountQuery,
+        survCountQuery,
+        subsQuery,
+        logsQuery,
+        staffQuery,
+        fsQuery
+      ]);
+
+      if (domainError) throw domainError;
+      if (survError) throw survError;
+      if (subError) throw subError;
+      if (staffError) throw staffError;
+
+      const submissions = subData || [];
+      const callLogs = logsData || [];
+      const allStaff = allStaffData || [];
+      const fileSubmissions = fileSubsData || [];
+
       if (logsError) {
         console.warn('Could not fetch call logs:', logsError.message);
-        toast.error(`Logs Fetch Error: ${logsError.message}`);
       }
-      const callLogs = logsData || [];
+      if (fsError && fsError.code !== '42P01') {
+        console.warn('Could not fetch file submissions:', fsError.message);
+      }
 
       const validCount = submissions.filter(s => s.status !== 'rejected').length;
       const dataHealth = submissions.length > 0 ? ((validCount / submissions.length) * 100) : 100;
@@ -397,118 +428,85 @@ export default function MasterReports() {
       const telecallerMap: Record<string, TelecallerData> = {};
       const teamLeadMap: Record<string, TeamLeadData> = {};
       const rawDump: any[] = [];
-
       const dynamicKeysSet = new Set<string>();
-      
-      const { data: allTeamLeads } = await supabase
-        .from('surveyors')
-        .select('id, full_name, assigned_users, user_roles!inner(name)')
-        .ilike('user_roles.name', '%Team Lead%');
 
-      const surveyorToTlMap = new Map<string, {id: string, name: string}>();
-      if (allTeamLeads) {
-        allTeamLeads.forEach(tl => {
-          teamLeadMap[tl.id] = {
-            id: tl.id,
-            name: tl.full_name,
-            totalEntries: 0,
-            assigned: 0,
-            newLeads: 0,
-            immediate: 0,
-            wrongNumber: 0,
-            reverted: 0,
-            closed: 0,
-            deleted: 0,
-            telecallers: {}
-          };
-          if (Array.isArray(tl.assigned_users)) {
-            tl.assigned_users.forEach((surveyorId: string) => {
-              surveyorToTlMap.set(surveyorId, { id: tl.id, name: tl.full_name });
-            });
-          }
-        });
-      }
-      setSurveyorToTlMapState(surveyorToTlMap);
-      setRawTeamLeads(allTeamLeads || []);
+      // Filter roles in memory from the single staff query
+      const allTeamLeads = allStaff.filter((s: any) => {
+        const role = (Array.isArray(s.user_roles) ? s.user_roles[0]?.name : s.user_roles?.name)?.toLowerCase() || '';
+        return role.includes('team lead');
+      });
 
-      // Pre-fetch all telecallers to ensure they show up in the report even with 0 leads
-      const { data: allTelecallers } = await supabase
-        .from('surveyors')
-        .select('id, full_name, user_roles!inner(name)')
-        .ilike('user_roles.name', '%Telecaller%');
+      const allTelecallers = allStaff.filter((s: any) => {
+        const role = (Array.isArray(s.user_roles) ? s.user_roles[0]?.name : s.user_roles?.name)?.toLowerCase() || '';
+        return role.includes('telecaller');
+      });
+
+      const fhData = allStaff.filter((s: any) => {
+        const role = (Array.isArray(s.user_roles) ? s.user_roles[0]?.name : s.user_roles?.name)?.toLowerCase() || '';
+        return role.includes('file handler');
+      });
 
       const tcNameMap = new Map<string, string>();
-      if (allTelecallers) {
-        allTelecallers.forEach((tc: any) => {
-          tcNameMap.set(tc.id, tc.full_name);
-          telecallerMap[tc.id] = {
-            id: tc.id,
-            name: tc.full_name,
-            assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
-          };
-        });
-      }
-      
-      // Fallback for telecallers in submissions but not found above (e.g. deleted/changed roles)
-      const tcIdsToFetch = new Set<string>();
-      submissions.forEach(sub => {
-        if (sub.telecaller_id && !tcNameMap.has(sub.telecaller_id)) tcIdsToFetch.add(sub.telecaller_id);
+      allStaff.forEach(s => {
+        tcNameMap.set(s.id, s.full_name || s.username);
       });
-      let completeTcList: any[] = allTelecallers ? [...allTelecallers] : [];
-      if (tcIdsToFetch.size > 0) {
-        const { data: tcData } = await supabase.from('surveyors').select('id, full_name').in('id', Array.from(tcIdsToFetch));
-        tcData?.forEach(tc => {
-          tcNameMap.set(tc.id, tc.full_name);
-          if (!telecallerMap[tc.id]) {
-            telecallerMap[tc.id] = {
-              id: tc.id,
-              name: tc.full_name,
-              assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
-            };
-          }
-        });
-        if (tcData) {
-           completeTcList = [...completeTcList, ...tcData];
+
+      allTelecallers.forEach((tc: any) => {
+        telecallerMap[tc.id] = {
+          id: tc.id,
+          name: tc.full_name || tc.username,
+          assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+        };
+      });
+
+      const surveyorToTlMap = new Map<string, {id: string, name: string}>();
+      allTeamLeads.forEach(tl => {
+        teamLeadMap[tl.id] = {
+          id: tl.id,
+          name: tl.full_name || tl.username,
+          totalEntries: 0,
+          assigned: 0,
+          newLeads: 0,
+          immediate: 0,
+          wrongNumber: 0,
+          reverted: 0,
+          closed: 0,
+          deleted: 0,
+          telecallers: {}
+        };
+        if (Array.isArray(tl.assigned_users)) {
+          tl.assigned_users.forEach((surveyorId: string) => {
+            surveyorToTlMap.set(surveyorId, { id: tl.id, name: tl.full_name || tl.username });
+          });
         }
-      }
+      });
+
+      setSurveyorToTlMapState(surveyorToTlMap);
+      setRawTeamLeads(allTeamLeads);
       setTcNameMapState(tcNameMap);
-      setRawTelecallers(completeTcList);
+      setRawTelecallers(allTelecallers);
       setRawSubmissions(submissions);
       setRawCallLogs(callLogs);
-      
-      const fhMap: Record<string, FileHandlerData> = {};
-      const { data: fhData } = await supabase
-        .from('surveyors')
-        .select('id, full_name, team_lead_ids, user_roles!inner(name)')
-        .ilike('user_roles.name', '%File Handler%');
-        
-      if (fhData) {
-        fhData.forEach((fh: any) => {
-          fhMap[fh.id] = { id: fh.id, name: fh.full_name, assignedLeads: 0, totalSubmitted: 0, totalClosed: 0, linkedFilesCount: 0, team_lead_ids: fh.team_lead_ids || [] };
-        });
-      }
 
-      let fsQuery = supabase.from('file_submissions').select('*');
-      if (start) fsQuery = fsQuery.gte('updated_at', startOfDay(parseLocalDate(start)).toISOString());
-      if (end) fsQuery = fsQuery.lte('updated_at', endOfDay(parseLocalDate(end)).toISOString());
-      
-      const { data: fileSubsData } = await fsQuery;
-      if (fileSubsData) {
-        fileSubsData.forEach((fs: any) => {
-          if (fhMap[fs.file_handler_id]) {
-            if (fs.status === 'submitted') {
-              fhMap[fs.file_handler_id].totalSubmitted += 1;
-            }
-            if (fs.status === 'closed' || fs.status === 'cleared') {
-               fhMap[fs.file_handler_id].totalClosed += 1;
-            }
-            if (fs.original_lead_id) {
-               fhMap[fs.file_handler_id].linkedFilesCount = (fhMap[fs.file_handler_id].linkedFilesCount || 0) + 1;
-            }
+      const fhMap: Record<string, FileHandlerData> = {};
+      fhData.forEach((fh: any) => {
+        fhMap[fh.id] = { id: fh.id, name: fh.full_name || fh.username, assignedLeads: 0, totalSubmitted: 0, totalClosed: 0, linkedFilesCount: 0, team_lead_ids: fh.team_lead_ids || [] };
+      });
+
+      fileSubmissions.forEach((fs: any) => {
+        if (fhMap[fs.file_handler_id]) {
+          if (fs.status === 'submitted') {
+            fhMap[fs.file_handler_id].totalSubmitted += 1;
           }
-        });
-      }
-      
+          if (fs.status === 'closed' || fs.status === 'cleared') {
+             fhMap[fs.file_handler_id].totalClosed += 1;
+          }
+          if (fs.original_lead_id) {
+             fhMap[fs.file_handler_id].linkedFilesCount = (fhMap[fs.file_handler_id].linkedFilesCount || 0) + 1;
+          }
+        }
+      });
+
       setDataFileHandlers(Object.values(fhMap).sort((a,b) => b.totalSubmitted - a.totalSubmitted));
 
       const callLogMap: Record<string, CallLogData> = {};
@@ -676,8 +674,9 @@ export default function MasterReports() {
           _raw: sub
         };
 
-        if (sub.data && typeof sub.data === 'object') {
-          for (const [k, v] of Object.entries(sub.data)) {
+        const subDataObj = (sub as any).data;
+        if (subDataObj && typeof subDataObj === 'object') {
+          for (const [k, v] of Object.entries(subDataObj)) {
             let label = k;
             const templates: any = (sub as any).form_templates;
             
@@ -739,6 +738,25 @@ export default function MasterReports() {
       toast.error(error.message || 'Failed to load master reports data');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSelectSubmission = async (sub: any) => {
+    if (!sub) return;
+    setSelectedSub(sub);
+    if (!sub.data || !sub.form_templates?.fields) {
+      try {
+        const { data: fullSub } = await supabase
+          .from('submissions')
+          .select('data, form_templates(fields)')
+          .eq('id', sub.id)
+          .single();
+        if (fullSub) {
+          setSelectedSub((prev: any) => prev && prev.id === sub.id ? { ...prev, ...fullSub } : prev);
+        }
+      } catch (err) {
+        console.error('Failed to fetch full submission details:', err);
+      }
     }
   };
 
@@ -812,6 +830,22 @@ export default function MasterReports() {
         };
       });
       sheetName = 'File Handler Performance';
+    } else if (activeTab === 'custom_dashboards') {
+      dataToExport = [
+        ...templates.map(t => ({
+          'Template Type': 'Surveyor Form',
+          'Template Name': t.name,
+          'Description': t.description || 'N/A',
+          'Template ID': t.id
+        })),
+        ...fileTemplatesList.map(ft => ({
+          'Template Type': 'File Form',
+          'Template Name': ft.name,
+          'Description': ft.description || 'N/A',
+          'Template ID': ft.id
+        }))
+      ];
+      sheetName = 'Custom Form Templates';
     } else {
       dataToExport = masterDump.map(({ _raw, ...rest }) => rest);
       sheetName = 'Master Dump';
@@ -843,14 +877,22 @@ export default function MasterReports() {
     }
   };
 
-  const handleOpenTemplateModal = async () => {
-    setShowTemplateModal(true);
-    if (templates.length === 0) {
+  const loadTemplates = async () => {
+    if (templates.length === 0 || fileTemplatesList.length === 0) {
       setIsLoadingTemplates(true);
       try {
-        const { data, error } = await supabase.from('form_templates').select('id, name, description').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false');
-        if (error) throw error;
-        setTemplates(data || []);
+        const [
+          { data: stData, error: stError },
+          { data: ftData, error: ftError }
+        ] = await Promise.all([
+          supabase.from('form_templates').select('id, name, description').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false'),
+          supabase.from('file_form_templates').select('id, name, description').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false')
+        ]);
+        if (stError) throw stError;
+        if (ftError && ftError.code !== '42P01') throw ftError;
+
+        setTemplates(stData || []);
+        setFileTemplatesList(ftData || []);
       } catch (err) {
         console.error(err);
         toast.error('Failed to load templates');
@@ -860,6 +902,7 @@ export default function MasterReports() {
     }
   };
 
+
   const tabs = [
     { id: 'domain', label: 'By Domain', icon: Database },
     { id: 'person', label: 'By Surveyor', icon: Filter },
@@ -867,6 +910,7 @@ export default function MasterReports() {
     { id: 'telecaller', label: 'By Telecaller', icon: PhoneCall },
     { id: 'outcome', label: 'Outcome By Telecaller', icon: PieChart },
     { id: 'filehandler', label: 'File Handler Performance', icon: FileCheck },
+    { id: 'custom_dashboards', label: 'Custom Dashboards', icon: Layers },
     { id: 'master', label: 'Master Dump', icon: Database },
   ];
 
@@ -971,30 +1015,87 @@ export default function MasterReports() {
       );
     }
     
+    if (activeTab === 'custom_dashboards') {
+      const totalOpenFiles = dataFileHandlers.reduce((acc, curr) => acc + curr.totalSubmitted, 0);
+      const totalClearedFiles = dataFileHandlers.reduce((acc, curr) => acc + curr.totalClosed, 0);
+
+      return (
+        <>
+          <Card className="p-4 border-bg-border/60 hover:border-accent-blue/30 transition-colors">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Surveyor Templates</span>
+              <PieChart className="w-4 h-4 text-accent-blue" />
+            </div>
+            <div className="text-2xl font-bold text-white tracking-tight">{templates.length.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1">Field collection templates</div>
+          </Card>
+          <Card className="p-4 border-bg-border/60 hover:border-emerald-500/30 transition-colors">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-secondary uppercase tracking-wider font-semibold">File Templates</span>
+              <FolderOpen className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-2xl font-bold text-white tracking-tight">{fileTemplatesList.length.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1">File workflow templates</div>
+          </Card>
+          <Card className="p-4 border-bg-border/60 hover:border-accent-blue/30 transition-colors">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Total Open Files</span>
+              <FileText className="w-4 h-4 text-accent-blue" />
+            </div>
+            <div className="text-2xl font-bold text-white tracking-tight">{totalOpenFiles.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1">Files currently open</div>
+          </Card>
+          <Card className="p-4 border-bg-border/60 hover:border-pink-500/30 transition-colors">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Total Files Cleared</span>
+              <CheckCircle className="w-4 h-4 text-pink-500" />
+            </div>
+            <div className="text-2xl font-bold text-pink-500 tracking-tight">{totalClearedFiles.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1">Files cleared completely</div>
+          </Card>
+        </>
+      );
+    }
+
     if (activeTab === 'filehandler') {
       const totalFH = dataFileHandlers.length;
+      const totalAssignedLeads = dataFileHandlers.reduce((acc, curr) => acc + (curr.assignedLeads || 0), 0);
       const totalSub = dataFileHandlers.reduce((acc, curr) => acc + curr.totalSubmitted, 0);
       const totalCls = dataFileHandlers.reduce((acc, curr) => acc + curr.totalClosed, 0);
 
       return (
         <>
-          <Card className="p-4">
-            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total File Handlers</div>
+          <Card className="p-4 border-bg-border/60 hover:border-accent-blue/30 transition-colors">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Total File Handlers</span>
+              <FileCheck className="w-4 h-4 text-accent-blue" />
+            </div>
             <div className="text-2xl font-bold text-white tracking-tight">{totalFH.toLocaleString()}</div>
-            <div className="text-xs text-text-muted mt-1 flex items-center">Active file handlers</div>
+            <div className="text-xs text-text-muted mt-1">Active file handlers</div>
           </Card>
-          <Card className="p-4">
-            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Open Files</div>
+          <Card className="p-4 border-bg-border/60 hover:border-accent-blue/30 transition-colors">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Total Leads Assigned</span>
+              <Database className="w-4 h-4 text-accent-blue" />
+            </div>
+            <div className="text-2xl font-bold text-accent-blue tracking-tight">{totalAssignedLeads.toLocaleString()}</div>
+            <div className="text-xs text-text-muted mt-1">Leads pushed to handlers</div>
+          </Card>
+          <Card className="p-4 border-bg-border/60 hover:border-white/30 transition-colors">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Total Open Files</span>
+              <FileText className="w-4 h-4 text-white" />
+            </div>
             <div className="text-2xl font-bold text-white tracking-tight">{totalSub.toLocaleString()}</div>
-            <div className="text-xs text-text-muted mt-1 flex items-center">Files currently open</div>
+            <div className="text-xs text-text-muted mt-1">Files currently open</div>
           </Card>
-          <Card className="p-4">
-            <div className="text-xs text-text-secondary uppercase tracking-wider font-semibold mb-1">Total Files Cleared</div>
+          <Card className="p-4 border-bg-border/60 hover:border-pink-500/30 transition-colors">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Total Files Cleared</span>
+              <CheckCircle className="w-4 h-4 text-pink-500" />
+            </div>
             <div className="text-2xl font-bold text-pink-500 tracking-tight">{totalCls.toLocaleString()}</div>
-            <div className="text-xs text-text-muted mt-1 flex items-center">Files cleared completely</div>
-          </Card>
-          <Card className="p-4 opacity-0 hidden md:block">
-            {/* Empty card for layout */}
+            <div className="text-xs text-text-muted mt-1">Files cleared completely</div>
           </Card>
         </>
       );
@@ -1029,65 +1130,81 @@ export default function MasterReports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-bg-secondary/30 p-4 rounded-2xl border border-bg-border/60 backdrop-blur-sm">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Master Reports Hub</h2>
-          <p className="text-text-secondary text-sm mt-1">Analyze data collection performance across all vectors.</p>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-2xl font-bold text-white tracking-tight">Master Reports Hub</h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-accent-blue/10 text-accent-blue border border-accent-blue/20 uppercase tracking-wider">
+              Admin Analytics
+            </span>
+          </div>
+          <p className="text-text-secondary text-xs sm:text-sm mt-0.5">Comprehensive performance tracking and custom form analytics across all vectors.</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-3 flex-wrap justify-end">
-          <div className="flex items-center gap-2 bg-bg-primary border border-bg-border rounded-lg px-2 py-1">
-            <span className="text-xs text-text-muted font-medium ml-1 uppercase tracking-widest">Date Range:</span>
+
+        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap w-full lg:w-auto justify-start lg:justify-end">
+          {/* Sleek Date Range Picker */}
+          <div className="flex items-center gap-2 bg-bg-primary border border-bg-border rounded-xl px-3 py-1.5 shadow-sm">
+            <Calendar className="w-3.5 h-3.5 text-accent-blue shrink-0" />
+            <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider hidden sm:inline">Range:</span>
             <input 
               type="date" 
-              className="bg-transparent border-none text-white text-sm focus:outline-none [color-scheme:dark]"
+              className="bg-transparent border-none text-white text-xs focus:outline-none [color-scheme:dark] w-28"
               value={globalStartDate}
               onChange={(e) => setGlobalStartDate(e.target.value)}
+              title="Start Date"
             />
-            <span className="text-text-muted">-</span>
+            <span className="text-text-muted text-xs font-semibold">-</span>
             <input 
               type="date" 
-              className="bg-transparent border-none text-white text-sm focus:outline-none [color-scheme:dark]"
+              className="bg-transparent border-none text-white text-xs focus:outline-none [color-scheme:dark] w-28"
               value={globalEndDate}
               onChange={(e) => setGlobalEndDate(e.target.value)}
+              title="End Date"
             />
-            <button
-              onClick={handleClearDates}
-              className="ml-1 px-3 py-1 bg-bg-secondary text-text-muted hover:text-white hover:bg-bg-border text-xs font-semibold rounded-md transition-colors"
-            >
-              Clear
-            </button>
+            {(globalStartDate || globalEndDate) && (
+              <button
+                onClick={handleClearDates}
+                className="px-2 py-0.5 bg-bg-secondary text-text-muted hover:text-white hover:bg-bg-border text-xs font-semibold rounded transition-colors"
+                title="Clear date range"
+              >
+                Clear
+              </button>
+            )}
             <button
               onClick={() => fetchData()}
-              className="ml-2 px-3 py-1 bg-accent-blue/10 text-accent-blue hover:bg-accent-blue hover:text-white text-xs font-semibold rounded-md transition-colors"
+              className="px-2.5 py-1 bg-accent-blue text-white hover:bg-accent-blue/90 text-xs font-semibold rounded-lg transition-all shadow-sm shadow-accent-blue/30"
             >
               Apply
             </button>
           </div>
-          <Button onClick={handleOpenTemplateModal} className="bg-accent-blue hover:bg-accent-blue/90 text-white border-transparent shadow-lg shadow-accent-blue/20">
-            <PieChart className="w-4 h-4 mr-2" />
-            Analyze by Custom Dashboard
-          </Button>
-          <Button onClick={handleExportExcel} className="bg-accent-green hover:bg-accent-green/90 text-white border-transparent shadow-lg shadow-accent-green/20">
+
+          {/* Clean Export Button */}
+          <Button 
+            onClick={handleExportExcel} 
+            className="bg-accent-green hover:bg-accent-green/90 text-white border-transparent shadow-sm shrink-0 text-xs sm:text-sm px-3.5 py-2 font-medium"
+          >
             <Download className="w-4 h-4 mr-2" />
             Export Excel
           </Button>
         </div>
       </div>
 
-      <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2">
+      {/* Tabs Navigation Bar */}
+      <div className="bg-bg-secondary/40 p-1.5 rounded-xl border border-bg-border/60 backdrop-blur-sm overflow-x-auto hide-scrollbar flex gap-1.5">
         {tabs.map(tab => {
           const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                activeTab === tab.id 
-                  ? 'bg-accent-blue text-white shadow-lg shadow-accent-blue/20' 
-                  : 'bg-bg-primary text-text-secondary border border-bg-border hover:text-white'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                isActive 
+                  ? 'bg-accent-blue text-white shadow-md shadow-accent-blue/25 ring-1 ring-accent-blue/30' 
+                  : 'text-text-secondary hover:text-white hover:bg-bg-primary/60'
               }`}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-text-muted'}`} />
               {tab.label}
             </button>
           );
@@ -1194,7 +1311,7 @@ export default function MasterReports() {
                     const currentItems = filteredDump.slice((masterDumpPage - 1) * masterDumpItemsPerPage, masterDumpPage * masterDumpItemsPerPage);
                     
                     return currentItems.map((sub, i) => (
-                    <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => setSelectedSub(sub._raw)}>
+                    <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer" onClick={() => handleSelectSubmission(sub._raw)}>
                       <td className="py-3 px-4 text-white font-medium">{sub.ID}</td>
                       <td className="py-3 px-4 text-text-secondary">{sub.Date}</td>
                       <td className="py-3 px-4">
@@ -1581,6 +1698,13 @@ export default function MasterReports() {
               <h3 className="text-sm font-semibold text-white">File Handler Performance</h3>
               <p className="text-xs text-text-muted mt-1">Review submission and closure metrics for File Handlers.</p>
             </div>
+            <button
+              onClick={() => { setActiveTab('custom_dashboards'); setCustomDashboardTab('file'); }}
+              className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 font-semibold bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/20 transition-all"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              View File Template Dashboards &rarr;
+            </button>
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left border-collapse text-sm">
@@ -1610,6 +1734,170 @@ export default function MasterReports() {
               </tbody>
             </table>
           </div>
+        </Card>
+      ) : activeTab === 'custom_dashboards' ? (
+        <Card className="flex flex-col p-6 overflow-hidden min-h-[420px] border border-bg-border/70 shadow-lg">
+          {/* Hub Header with Search & Sub-Tabs */}
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 pb-5 border-b border-bg-border">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-accent-blue" />
+                  Custom Template Dashboards Hub
+                </h3>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
+                  Interactive Analytics
+                </span>
+              </div>
+              <p className="text-xs text-text-muted mt-1">
+                Select any surveyor form or file workflow template to analyze submissions, field-level distributions, charts, and exports.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+              {/* Search Input */}
+              <div className="relative min-w-[200px]">
+                <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={templateSearchQuery}
+                  onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                  placeholder="Search templates..."
+                  className="w-full bg-bg-primary border border-bg-border text-white text-xs rounded-lg pl-8 pr-3 py-2 focus:border-accent-blue focus:outline-none placeholder:text-text-muted"
+                />
+              </div>
+
+              {/* Sub-tab pills */}
+              <div className="flex items-center bg-bg-primary border border-bg-border rounded-lg p-1">
+                <button
+                  onClick={() => setCustomDashboardTab('surveyor')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    customDashboardTab === 'surveyor'
+                      ? 'bg-accent-blue text-white shadow-sm'
+                      : 'text-text-muted hover:text-white'
+                  }`}
+                >
+                  <PieChart className="w-3.5 h-3.5" />
+                  Surveyor Forms ({templates.length})
+                </button>
+                <button
+                  onClick={() => setCustomDashboardTab('file')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    customDashboardTab === 'file'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-text-muted hover:text-white'
+                  }`}
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  File Forms ({fileTemplatesList.length})
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Cards Grid */}
+          {isLoadingTemplates ? (
+            <div className="flex flex-col items-center justify-center py-16 text-text-muted border-2 border-dashed border-bg-border rounded-xl">
+              <Loader2 className="w-8 h-8 animate-spin text-accent-blue mb-3" />
+              <p className="text-sm">Loading custom form templates...</p>
+            </div>
+          ) : customDashboardTab === 'surveyor' ? (
+            (() => {
+              const filtered = templates.filter(t => 
+                t.name?.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+                (t.description && t.description.toLowerCase().includes(templateSearchQuery.toLowerCase()))
+              );
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="py-16 text-center text-text-muted italic border-2 border-dashed border-bg-border rounded-xl">
+                    {templateSearchQuery ? 'No surveyor form templates match your search.' : 'No active surveyor form templates found.'}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {filtered.map(t => (
+                    <div
+                      key={t.id}
+                      className="bg-bg-primary border border-bg-border rounded-xl p-5 hover:border-accent-blue/60 transition-all flex flex-col justify-between group shadow-sm hover:shadow-accent-blue/5"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-[10px] uppercase font-bold text-accent-blue bg-accent-blue/10 px-2 py-0.5 rounded border border-accent-blue/20">
+                            Surveyor Template
+                          </span>
+                          <PieChart className="w-4 h-4 text-text-muted group-hover:text-accent-blue transition-colors" />
+                        </div>
+                        <h4 className="font-bold text-white text-base group-hover:text-accent-blue transition-colors mb-1.5">
+                          {t.name}
+                        </h4>
+                        <p className="text-xs text-text-secondary line-clamp-2 mb-4">
+                          {t.description || 'Dynamic field survey form template.'}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => navigate(`/admin/reports/custom/${t.id}`)}
+                        className="w-full bg-accent-blue/10 hover:bg-accent-blue text-accent-blue hover:text-white border border-accent-blue/30 transition-all font-medium text-xs flex items-center justify-center gap-1.5"
+                      >
+                        <span>Open Custom Dashboard</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
+          ) : (
+            (() => {
+              const filtered = fileTemplatesList.filter(ft => 
+                ft.name?.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+                (ft.description && ft.description.toLowerCase().includes(templateSearchQuery.toLowerCase()))
+              );
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="py-16 text-center text-text-muted italic border-2 border-dashed border-bg-border rounded-xl">
+                    {templateSearchQuery ? 'No file form templates match your search.' : 'No active file form templates found.'}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {filtered.map(ft => (
+                    <div
+                      key={ft.id}
+                      className="bg-bg-primary border border-bg-border rounded-xl p-5 hover:border-emerald-500/60 transition-all flex flex-col justify-between group shadow-sm hover:shadow-emerald-500/5"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            File Template
+                          </span>
+                          <FolderOpen className="w-4 h-4 text-text-muted group-hover:text-emerald-400 transition-colors" />
+                        </div>
+                        <h4 className="font-bold text-white text-base group-hover:text-emerald-400 transition-colors mb-1.5">
+                          {ft.name}
+                        </h4>
+                        <p className="text-xs text-text-secondary line-clamp-2 mb-4">
+                          {ft.description || 'File form processing workflow template.'}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => navigate(`/admin/reports/custom-file/${ft.id}`)}
+                        className="w-full bg-emerald-500/10 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 transition-all font-medium text-xs flex items-center justify-center gap-1.5"
+                      >
+                        <span>Open Custom Dashboard</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
+          )}
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1825,51 +2113,7 @@ export default function MasterReports() {
         </div>
       )}
 
-      {/* Custom Template Selection Modal */}
-      {showTemplateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-bg-secondary w-full max-w-lg rounded-xl border border-bg-border shadow-2xl flex flex-col overflow-hidden">
-            <div className="p-5 border-b border-bg-border flex justify-between items-center bg-bg-primary shrink-0">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <PieChart className="w-5 h-5 text-accent-blue" />
-                Select Custom Dashboard
-              </h3>
-              <button onClick={() => setShowTemplateModal(false)} className="text-text-muted hover:text-white p-2 rounded-full hover:bg-bg-secondary transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto max-h-[60vh]">
-              {isLoadingTemplates ? (
-                <div className="flex flex-col items-center justify-center py-8">
-                  <Loader2 className="w-8 h-8 text-accent-blue animate-spin mb-4" />
-                  <p className="text-text-muted">Loading templates...</p>
-                </div>
-              ) : templates.length === 0 ? (
-                <div className="text-center py-8 text-text-muted italic border-2 border-dashed border-bg-border rounded-xl">
-                  No active templates found.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {templates.map(t => (
-                    <button
-                      key={t.id}
-                      onClick={() => navigate(`/admin/reports/custom/${t.id}`)}
-                      className="w-full text-left bg-bg-primary border border-bg-border p-4 rounded-xl hover:border-accent-blue/50 transition-colors group flex justify-between items-center"
-                    >
-                      <div>
-                        <h4 className="font-bold text-white group-hover:text-accent-blue transition-colors">{t.name}</h4>
-                        <p className="text-xs text-text-secondary mt-1">{t.description || 'No description'}</p>
-                      </div>
-                      <PieChart className="w-5 h-5 text-text-muted group-hover:text-accent-blue transition-colors" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

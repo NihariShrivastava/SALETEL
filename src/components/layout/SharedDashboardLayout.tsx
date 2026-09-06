@@ -7,9 +7,10 @@ import { Badge } from '../../components/ui/Badge';
 interface SharedDashboardLayoutProps {
   title: string;
   homePath: string;
+  maxWidth?: string;
 }
 
-export default function SharedDashboardLayout({ title, homePath }: SharedDashboardLayoutProps) {
+export default function SharedDashboardLayout({ title, homePath, maxWidth = 'max-w-5xl' }: SharedDashboardLayoutProps) {
   const { user, logout, role } = useAuth();
   const navigate = useNavigate();
 
@@ -49,7 +50,7 @@ export default function SharedDashboardLayout({ title, homePath }: SharedDashboa
       </header>
       
       <main className="flex-1 p-4 sm:p-6 overflow-y-auto w-full">
-        <div className="max-w-5xl mx-auto">
+        <div className={`${maxWidth} mx-auto`}>
           <Outlet />
         </div>
       </main>

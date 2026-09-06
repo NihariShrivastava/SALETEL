@@ -12,7 +12,12 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Ba
 
 const COLORS = ['#4f6ef7', '#22c55e', '#eab308', '#ef4444', '#06b6d4', '#f97316', '#8b5cf6', '#ec4899'];
 
-export default function CustomTemplateDashboard() {
+interface CustomTemplateDashboardProps {
+  backPath?: string;
+  isReadOnly?: boolean;
+}
+
+export default function CustomTemplateDashboard({ backPath = '/admin/reports' }: CustomTemplateDashboardProps) {
   const { templateId } = useParams();
   const navigate = useNavigate();
 
@@ -25,7 +30,7 @@ export default function CustomTemplateDashboard() {
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [surveyorFilter, setSurveyorFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   useEffect(() => {
     if (templateId) {
@@ -85,7 +90,7 @@ export default function CustomTemplateDashboard() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters, dateRange, surveyorFilter]);
+  }, [filters, dateRange, surveyorFilter, itemsPerPage]);
 
   const uniqueSurveyors = useMemo(() => {
     const map = new Map<string, { id: string, name: string }>();
@@ -182,7 +187,7 @@ export default function CustomTemplateDashboard() {
   const paginatedSubmissions = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredSubmissions.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredSubmissions, currentPage]);
+  }, [filteredSubmissions, currentPage, itemsPerPage]);
 
   const totalPages = Math.ceil(filteredSubmissions.length / itemsPerPage);
 
@@ -191,7 +196,7 @@ export default function CustomTemplateDashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/admin/reports')} className="text-text-muted hover:text-white">
+          <Button variant="ghost" size="sm" onClick={() => navigate(backPath)} className="text-text-muted hover:text-white">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
@@ -372,10 +377,26 @@ export default function CustomTemplateDashboard() {
             )}
 
             {/* Data Table */}
-            <Card className="flex flex-col p-0 overflow-hidden flex-1">
-              <div className="p-4 border-b border-bg-border flex flex-col md:flex-row md:items-center justify-between gap-4 bg-bg-secondary">
-                <h3 className="text-sm font-semibold text-white whitespace-nowrap">Filtered Submissions Data</h3>
-                
+            <Card className="lg:col-span-3 p-0 overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-bg-border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-bg-secondary">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Records</h3>
+                  <p className="text-xs text-text-muted mt-0.5">Showing {filteredSubmissions.length} submissions matching filters</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-text-muted">Rows per page:</span>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                    className="bg-bg-primary border border-bg-border rounded px-2.5 py-1 text-xs text-white focus:border-accent-blue focus:outline-none cursor-pointer"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-text-secondary">Surveyor:</span>
@@ -460,29 +481,49 @@ export default function CustomTemplateDashboard() {
               
               {/* Pagination Controls */}
               {filteredSubmissions.length > 0 && (
-                <div className="p-4 border-t border-bg-border flex items-center justify-between bg-bg-primary shrink-0">
+                <div className="p-4 border-t border-bg-border flex flex-col sm:flex-row items-center justify-between gap-3 bg-bg-primary shrink-0">
                   <span className="text-xs text-text-secondary">
                     Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredSubmissions.length)} of {filteredSubmissions.length} entries
                   </span>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                  <div className="flex items-center gap-2">
+                    <button 
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
                       disabled={currentPage === 1}
-                      className="border-bg-border text-text-secondary hover:text-white"
+                      className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-40 disabled:cursor-not-allowed text-xs px-3 py-1.5 rounded transition-colors"
                     >
                       Previous
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, idx) => idx + 1)
+                        .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                        .map((p, idx, arr) => {
+                          const showEllipsis = idx > 0 && p - arr[idx - 1] > 1;
+                          return (
+                            <React.Fragment key={p}>
+                              {showEllipsis && <span className="text-xs text-text-muted px-1">...</span>}
+                              <button
+                                onClick={() => setCurrentPage(p)}
+                                className={`text-xs w-7 h-7 rounded flex items-center justify-center font-medium transition-colors ${
+                                  currentPage === p
+                                    ? 'bg-accent-blue text-white shadow-sm shadow-accent-blue/30'
+                                    : 'bg-bg-secondary text-text-secondary hover:text-white border border-bg-border'
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            </React.Fragment>
+                          );
+                        })}
+                    </div>
+
+                    <button 
                       onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
                       disabled={currentPage === totalPages || totalPages === 0}
-                      className="border-bg-border text-text-secondary hover:text-white"
+                      className="bg-bg-secondary text-white border border-bg-border hover:bg-bg-border disabled:opacity-40 disabled:cursor-not-allowed text-xs px-3 py-1.5 rounded transition-colors"
                     >
                       Next
-                    </Button>
+                    </button>
                   </div>
                 </div>
               )}

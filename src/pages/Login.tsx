@@ -35,13 +35,31 @@ export default function Login() {
     try {
       const hashed = await hashPassword(password);
 
-      // Check admin_users
-      const { data: adminData, error: adminErr } = await supabase
-        .from('admin_users')
-        .select('*')
-        .ilike('username', username)
-        .eq('password_hash', hashed)
-        .single();
+      // Check admin_users, counters, and surveyors in parallel
+      const [
+        { data: adminData },
+        { data: counterData },
+        { data: surveyorData }
+      ] = await Promise.all([
+        supabase
+          .from('admin_users')
+          .select('id, username, password_hash')
+          .ilike('username', username)
+          .eq('password_hash', hashed)
+          .maybeSingle(),
+        supabase
+          .from('counters')
+          .select('id, username, password_hash, domain_id')
+          .ilike('username', username)
+          .eq('password_hash', password)
+          .maybeSingle(),
+        supabase
+          .from('surveyors')
+          .select('id, username, full_name, is_active, user_role_id, assigned_users, team_lead_ids, user_role:user_roles(name)')
+          .ilike('username', username)
+          .eq('password_hash', password)
+          .maybeSingle()
+      ]);
 
       if (adminData) {
         login(adminData, 'admin');
@@ -50,28 +68,12 @@ export default function Login() {
         return;
       }
 
-      // Check counters first
-      const { data: counterData } = await supabase
-        .from('counters')
-        .select('*')
-        .ilike('username', username)
-        .eq('password_hash', password)
-        .single();
-
       if (counterData) {
         login(counterData, 'counter');
         toast.success(`Welcome to Counter Workstation`);
         navigate('/counter/dashboard');
         return;
       }
-
-      // Check surveyors/telecallers/team leads (they all use the surveyors table)
-      const { data: surveyorData } = await supabase
-        .from('surveyors')
-        .select('*, user_role:user_roles(name)')
-        .ilike('username', username)
-        .eq('password_hash', password)
-        .single();
 
       if (surveyorData) {
         if (!surveyorData.is_active) {
@@ -81,10 +83,11 @@ export default function Login() {
 
         const roleName = (surveyorData.user_role as any)?.name?.toLowerCase() || 'surveyor';
         
-        let normalizedRole: 'surveyor' | 'telecaller' | 'team_lead' | 'file_handler' = 'surveyor';
+        let normalizedRole: 'surveyor' | 'telecaller' | 'team_lead' | 'file_handler' | 'manager' = 'surveyor';
         if (roleName.includes('telecaller')) normalizedRole = 'telecaller';
         if (roleName.includes('team lead')) normalizedRole = 'team_lead';
         if (roleName.includes('file handler')) normalizedRole = 'file_handler';
+        if (roleName.includes('manager')) normalizedRole = 'manager';
 
         login(surveyorData, normalizedRole);
         toast.success(`Welcome, ${surveyorData.full_name}`);
@@ -95,6 +98,8 @@ export default function Login() {
           navigate('/telecaller/dashboard');
         } else if (normalizedRole === 'file_handler') {
           navigate('/filehandler/dashboard');
+        } else if (normalizedRole === 'manager') {
+          navigate('/manager/dashboard');
         } else {
           navigate('/surveyor/dashboard');
         }

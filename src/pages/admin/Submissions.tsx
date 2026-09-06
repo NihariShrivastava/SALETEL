@@ -32,7 +32,7 @@ export default function Submissions() {
   const fetchData = async () => {
     try {
       const [subsRes, domainsRes, fhRes, formsRes] = await Promise.all([
-        supabase.from('submissions').select('*, surveyors!surveyor_id(full_name), domains(id, name), form_templates(fields), file_submissions(file_handler_id, file_form_template_id)').order('submitted_at', { ascending: false }),
+        supabase.from('submissions').select('id, submitted_at, status, lead_status, domain_id, admin_notes, surveyor_id, surveyors!surveyor_id(full_name), domains(id, name), file_submissions(file_handler_id, file_form_template_id)').order('submitted_at', { ascending: false }),
         supabase.from('domains').select('id, name').or('is_deleted.is.null,is_deleted.eq.false'),
         supabase.from('surveyors').select('id, full_name, user_roles!inner(name)').ilike('user_roles.name', '%File Handler%'),
         supabase.from('file_form_templates').select('id, name').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false')
@@ -50,6 +50,26 @@ export default function Submissions() {
       toast.error('Failed to load submissions');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSelectSub = async (sub: any) => {
+    if (!sub) return;
+    setSelectedSub(sub);
+    setAdminNotes(sub.admin_notes || '');
+    if (!sub.data) {
+      try {
+        const { data: fullSub } = await supabase
+          .from('submissions')
+          .select('data, form_templates(fields)')
+          .eq('id', sub.id)
+          .single();
+        if (fullSub) {
+          setSelectedSub((prev: any) => prev && prev.id === sub.id ? { ...prev, ...fullSub } : prev);
+        }
+      } catch (err) {
+        console.error('Failed to load full submission data:', err);
+      }
     }
   };
 
@@ -181,10 +201,7 @@ export default function Submissions() {
                       "border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors cursor-pointer",
                       selectedSub?.id === sub.id ? "bg-bg-hover" : ""
                     )}
-                    onClick={() => {
-                      setSelectedSub(sub);
-                      setAdminNotes(sub.admin_notes || '');
-                    }}
+                    onClick={() => handleSelectSub(sub)}
                   >
                     <td className="py-3 px-5 text-white font-medium">{sub.surveyors?.full_name || 'Unknown'}</td>
                     <td className="py-3 px-5 text-text-secondary">{sub.domains?.name || '-'}</td>
@@ -198,8 +215,7 @@ export default function Submissions() {
                     <td className="py-3 px-5 text-right">
                       <Button variant="ghost" size="sm" onClick={(e) => { 
                         e.stopPropagation(); 
-                        setSelectedSub(sub); 
-                        setAdminNotes(sub.admin_notes || '');
+                        handleSelectSub(sub);
                       }}>
                         View
                       </Button>
