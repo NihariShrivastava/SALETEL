@@ -46,7 +46,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             <span>Server: Supabase</span>
           </div>
           
-          <button className="hover:text-white transition-colors p-1" title="Refresh">
+          <button className="hover:text-white transition-colors p-1" title="Refresh" onClick={() => window.location.reload()}>
             <RefreshCw className="w-5 h-5" />
           </button>
           <button className="hover:text-white transition-colors flex items-center gap-2" onClick={() => navigate('/admin/reports')}>

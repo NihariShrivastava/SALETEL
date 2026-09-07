@@ -11,7 +11,7 @@ import FillForm from './FillForm';
 
 export default function SurveyorDashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   
   const [assignedDomains, setAssignedDomains] = useState<{id: string, name: string}[]>([]);
   const [activeDomainId, setActiveDomainId] = useState<string | null>(null);
@@ -39,9 +39,28 @@ export default function SurveyorDashboard() {
     
     const fetchAssignedData = async () => {
       try {
-        const domainIdsToFetch = user.assigned_domains || [];
+        // Fetch fresh surveyor record directly to guarantee latest assigned domains & templates
+        const { data: freshSurveyor, error: survError } = await supabase
+          .from('surveyors')
+          .select('*, user_role:user_roles(name)')
+          .eq('id', user.id)
+          .single();
+
+        const currentProfile = (!survError && freshSurveyor) ? freshSurveyor : user;
+        if (!survError && freshSurveyor && updateUser) {
+          updateUser(freshSurveyor);
+        }
+
+        let domainIdsToFetch: string[] = [];
+        if (currentProfile.assigned_domains && Array.isArray(currentProfile.assigned_domains) && currentProfile.assigned_domains.length > 0) {
+          domainIdsToFetch = currentProfile.assigned_domains;
+        } else if (currentProfile.domain_id) {
+          domainIdsToFetch = [currentProfile.domain_id];
+        }
 
         if (domainIdsToFetch.length === 0) {
+          setAssignedDomains([]);
+          setActiveDomainId(null);
           setIsLoading(false);
           return;
         }
@@ -52,12 +71,16 @@ export default function SurveyorDashboard() {
           .in('id', domainIdsToFetch)
           .or('is_deleted.is.null,is_deleted.eq.false');
 
-        if (domainsData) {
+        if (domainsData && domainsData.length > 0) {
           setAssignedDomains(domainsData);
-          if (domainsData.length > 0 && !activeDomainId) {
-            setActiveDomainId(domainsData[0].id);
+          setActiveDomainId(prev => {
+            if (prev && domainsData.some(d => d.id === prev)) return prev;
             setDomainName(domainsData[0].name);
-          }
+            return domainsData[0].id;
+          });
+        } else {
+          setAssignedDomains([]);
+          setActiveDomainId(null);
         }
         
         // Fetch Submissions History
@@ -79,26 +102,36 @@ export default function SurveyorDashboard() {
     };
 
     fetchAssignedData();
-  }, [user]);
+  }, [user?.id]);
 
   // Fetch templates when domain changes
   useEffect(() => {
     if (!user || !activeDomainId) return;
 
     const fetchTemplates = async () => {
-      const templateIds = user.assigned_template_ids || [];
-      if (templateIds.length === 0) {
-        setAssignedTemplates([]);
-        setActiveTemplateId(null);
-        return;
-      }
-      
-      const { data: tData } = await supabase
+      // Fetch fresh surveyor record or use user's assigned templates
+      const { data: freshSurveyor } = await supabase
+        .from('surveyors')
+        .select('assigned_template_ids')
+        .eq('id', user.id)
+        .single();
+
+      const templateIds = (freshSurveyor?.assigned_template_ids && freshSurveyor.assigned_template_ids.length > 0)
+        ? freshSurveyor.assigned_template_ids
+        : (user.assigned_template_ids || []);
+
+      let query = supabase
         .from('form_templates')
         .select('id, name')
         .eq('domain_id', activeDomainId)
-        .in('id', templateIds)
         .or('is_deleted.is.null,is_deleted.eq.false');
+
+      // If specific template IDs are assigned, restrict to them
+      if (templateIds && templateIds.length > 0) {
+        query = query.in('id', templateIds);
+      }
+      
+      const { data: tData } = await query;
         
       if (tData) {
         setAssignedTemplates(tData);
@@ -111,7 +144,7 @@ export default function SurveyorDashboard() {
     };
     
     fetchTemplates();
-  }, [user, activeDomainId]);
+  }, [user?.id, activeDomainId]);
 
   // Apply filters to submissions
   useEffect(() => {
@@ -163,69 +196,75 @@ export default function SurveyorDashboard() {
           <h2 className="text-3xl font-bold text-white tracking-tight">Ready for your next task?</h2>
           
           <div className="flex flex-col gap-4 max-w-sm">
-            {assignedDomains.length > 0 && (
-              <div className="relative">
-                <p className="text-sm text-text-secondary mb-1">Select Domain:</p>
-                <button 
-                  onClick={() => setIsDomainDropdownOpen(!isDomainDropdownOpen)}
-                  className="w-full flex items-center justify-between bg-bg-primary border border-bg-border hover:border-accent-blue px-4 py-3 rounded-lg text-sm text-white font-medium transition-colors"
-                >
-                  <span>{domainName}</span>
-                  <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isDomainDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
+            {assignedDomains.length > 0 ? (
+              <>
+                <div className="relative">
+                  <p className="text-sm text-text-secondary mb-1">Select Domain:</p>
+                  <button 
+                    onClick={() => setIsDomainDropdownOpen(!isDomainDropdownOpen)}
+                    className="w-full flex items-center justify-between bg-bg-primary border border-bg-border hover:border-accent-blue px-4 py-3 rounded-lg text-sm text-white font-medium transition-colors"
+                  >
+                    <span>{domainName}</span>
+                    <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isDomainDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {isDomainDropdownOpen && (
+                    <div className="absolute top-full mt-2 w-full bg-bg-primary border border-bg-border rounded-lg shadow-xl z-50 left-0">
+                      {assignedDomains.map(d => (
+                        <button
+                          key={d.id}
+                          onClick={() => {
+                            setActiveDomainId(d.id);
+                            setDomainName(d.name);
+                            setIsDomainDropdownOpen(false);
+                            setShowFillForm(false);
+                          }}
+                          className={`w-full text-left px-4 py-3 text-sm transition-colors ${
+                            activeDomainId === d.id 
+                              ? 'bg-accent-blue/10 text-accent-blue border-l-2 border-accent-blue font-medium' 
+                              : 'text-text-secondary hover:bg-bg-hover hover:text-white border-l-2 border-transparent'
+                          }`}
+                        >
+                          {d.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 
-                {isDomainDropdownOpen && (
-                  <div className="absolute top-full mt-2 w-full bg-bg-primary border border-bg-border rounded-lg shadow-xl z-50 left-0">
-                    {assignedDomains.map(d => (
-                      <button
-                        key={d.id}
-                        onClick={() => {
-                          setActiveDomainId(d.id);
-                          setDomainName(d.name);
-                          setIsDomainDropdownOpen(false);
-                          setShowFillForm(false);
-                        }}
-                        className={`w-full text-left px-4 py-3 text-sm transition-colors ${
-                          activeDomainId === d.id 
-                            ? 'bg-accent-blue/10 text-accent-blue border-l-2 border-accent-blue font-medium' 
-                            : 'text-text-secondary hover:bg-bg-hover hover:text-white border-l-2 border-transparent'
-                        }`}
-                      >
-                        {d.name}
-                      </button>
-                    ))}
+                {assignedTemplates.length > 0 ? (
+                  <div className="flex flex-col">
+                    <p className="text-sm text-text-secondary mb-1">Select Template:</p>
+                    <select 
+                      value={activeTemplateId || ''} 
+                      onChange={e => {
+                        setActiveTemplateId(e.target.value);
+                        setShowFillForm(false);
+                      }}
+                      className="w-full bg-bg-primary border border-bg-border text-white text-sm rounded-lg px-4 py-3 focus:border-accent-blue focus:outline-none"
+                    >
+                      {assignedTemplates.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
                   </div>
+                ) : (
+                  <p className="text-sm text-accent-red">No templates assigned for this domain.</p>
                 )}
-              </div>
-            )}
-            
-            {assignedTemplates.length > 0 ? (
-              <div className="flex flex-col">
-                <p className="text-sm text-text-secondary mb-1">Select Template:</p>
-                <select 
-                  value={activeTemplateId || ''} 
-                  onChange={e => {
-                    setActiveTemplateId(e.target.value);
-                    setShowFillForm(false);
-                  }}
-                  className="w-full bg-bg-primary border border-bg-border text-white text-sm rounded-lg px-4 py-3 focus:border-accent-blue focus:outline-none"
-                >
-                  {assignedTemplates.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <p className="text-sm text-accent-red">No templates assigned for this domain.</p>
-            )}
 
-            <Button 
-              className="w-full py-4 text-lg bg-gradient-to-r from-accent-blue to-accent-purple hover:from-accent-blue/90 hover:to-accent-purple/90 border-transparent shadow-[0_0_20px_rgba(79,110,247,0.3)] mt-2"
-              onClick={() => setShowFillForm(true)}
-              disabled={!activeDomainId || !activeTemplateId}
-            >
-              Fill New Form <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
+                <Button 
+                  className="w-full py-4 text-lg bg-gradient-to-r from-accent-blue to-accent-purple hover:from-accent-blue/90 hover:to-accent-purple/90 border-transparent shadow-[0_0_20px_rgba(79,110,247,0.3)] mt-2"
+                  onClick={() => setShowFillForm(true)}
+                  disabled={!activeDomainId || !activeTemplateId}
+                >
+                  Fill New Form <ArrowRight className="w-5 h-5 ml-2" />
+                </Button>
+              </>
+            ) : (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm rounded-xl">
+                No domains assigned to your account yet. Please contact your administrator.
+              </div>
+            )}
           </div>
         </div>
       </div>

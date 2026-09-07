@@ -26,7 +26,7 @@ const getStatusBadgeVariant = (status?: string) => {
 };
 
 export default function TeamLeadDashboard() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const navigate = useNavigate();
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
@@ -51,12 +51,30 @@ export default function TeamLeadDashboard() {
   // Status filter for tabs
 
   const fetchSubmissions = async () => {
-    if (!user?.assigned_users || user.assigned_users.length === 0) {
+    if (!user) {
       setIsLoading(false);
       return;
     }
 
     try {
+      // Live sync profile to get latest assigned_users
+      const { data: freshTL } = await supabase
+        .from('surveyors')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (freshTL && updateUser) {
+        updateUser(freshTL);
+      }
+
+      const activeAssignedUsers = freshTL?.assigned_users || user.assigned_users || [];
+      if (activeAssignedUsers.length === 0) {
+        setSubmissions([]);
+        setTeamCounts({ surveyors: 0, telecallers: 0 });
+        setIsLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('submissions')
         .select(`
@@ -65,7 +83,7 @@ export default function TeamLeadDashboard() {
           telecaller:surveyors!telecaller_id(id, full_name, username),
           form_templates(name)
         `)
-        .in('surveyor_id', user.assigned_users)
+        .in('surveyor_id', activeAssignedUsers)
         .order('submitted_at', { ascending: false });
 
       if (error) throw error;

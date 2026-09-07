@@ -28,6 +28,7 @@ export default function Submissions() {
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [adminNotes, setAdminNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -76,6 +77,46 @@ export default function Submissions() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleSaveNotes = async () => {
+    if (!selectedSub) return;
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('submissions')
+        .update({ admin_notes: adminNotes })
+        .eq('id', selectedSub.id);
+      if (error) throw error;
+      toast.success('Admin notes saved');
+      setSubmissions(prev => prev.map(s => s.id === selectedSub.id ? { ...s, admin_notes: adminNotes } : s));
+      setSelectedSub((prev: any) => prev ? { ...prev, admin_notes: adminNotes } : null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to save notes');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateStatus = async (newStatus: string) => {
+    if (!selectedSub) return;
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('submissions')
+        .update({ status: newStatus, admin_notes: adminNotes })
+        .eq('id', selectedSub.id);
+      if (error) throw error;
+      toast.success(`Submission status updated to ${newStatus}`);
+      setSubmissions(prev => prev.map(s => s.id === selectedSub.id ? { ...s, status: newStatus, admin_notes: adminNotes } : s));
+      setSelectedSub((prev: any) => prev ? { ...prev, status: newStatus, admin_notes: adminNotes } : null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update status');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
 
 
@@ -356,9 +397,34 @@ export default function Submissions() {
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
               ></textarea>
+              <div className="flex justify-end pt-1">
+                <Button size="sm" onClick={handleSaveNotes} disabled={isSaving} className="text-xs">
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                  Save Notes
+                </Button>
+              </div>
             </div>
           </div>
 
+          <div className="p-4 border-t border-bg-border bg-bg-primary shrink-0 flex items-center justify-between gap-3">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleUpdateStatus('rejected')} 
+              disabled={isSaving || selectedSub.status === 'rejected'}
+              className="text-accent-red hover:bg-accent-red/10 border-accent-red/30 flex-1"
+            >
+              <XCircle className="w-4 h-4 mr-1.5" /> Reject
+            </Button>
+            <Button 
+              size="sm" 
+              onClick={() => handleUpdateStatus('reviewed')} 
+              disabled={isSaving || selectedSub.status === 'reviewed'}
+              className="bg-accent-green hover:bg-green-600 text-white flex-1"
+            >
+              <Check className="w-4 h-4 mr-1.5" /> Approve / Review
+            </Button>
+          </div>
         </div>
       )}
     </div>

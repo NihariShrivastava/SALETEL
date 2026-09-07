@@ -206,7 +206,7 @@ export default function SurveyorManagement() {
 
   const teamLeadsList = surveyors.filter(s => {
     const roleName = s.user_role?.name?.toLowerCase() || '';
-    return roleName.includes('team lead') && s.id !== editingId;
+    return (roleName.includes('team lead') || roleName.includes('teamlead') || roleName.includes('team_lead')) && s.id !== editingId;
   });
   
   const telecallersList = surveyors.filter(s => {
@@ -216,7 +216,7 @@ export default function SurveyorManagement() {
 
   const fileHandlersList = surveyors.filter(s => {
     const roleName = s.user_role?.name?.toLowerCase() || '';
-    return roleName.includes('file handler') && s.id !== editingId;
+    return (roleName.includes('file handler') || roleName.includes('filehandler') || roleName.includes('file_handler')) && s.id !== editingId;
   });
   
   const subordinateOptions = surveyors.filter(s => {
@@ -273,8 +273,8 @@ export default function SurveyorManagement() {
               const selectedRoleName = userRoles.find(ur => ur.id === selectedUserRoleId)?.name?.toLowerCase() || '';
               const isSurveyor = selectedRoleName.includes('surveyor');
               const isTelecaller = selectedRoleName.includes('telecaller');
-              const isTeamLead = selectedRoleName.includes('team lead');
-              const isFileHandler = selectedRoleName.includes('file handler');
+              const isTeamLead = selectedRoleName.includes('team lead') || selectedRoleName.includes('teamlead') || selectedRoleName.includes('team_lead');
+              const isFileHandler = selectedRoleName.includes('file handler') || selectedRoleName.includes('filehandler') || selectedRoleName.includes('file_handler');
               const isManager = selectedRoleName.includes('manager');
               
               if (!selectedUserRoleId) return null;

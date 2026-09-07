@@ -29,7 +29,7 @@ const findValueByLabelRegex = (lead: any, regex: RegExp) => {
 };
 
 export default function FileHandlerDashboard() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'pending' | 'submitted' | 'cleared'>('pending');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
@@ -59,12 +59,25 @@ export default function FileHandlerDashboard() {
     if (!user) return;
     setIsLoading(true);
     try {
+      // Live sync profile for file handler
+      const { data: freshFH } = await supabase
+        .from('surveyors')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (freshFH && updateUser) {
+        updateUser(freshFH);
+      }
+
+      const activeFileTemplateId = freshFH?.assigned_file_template_id || user.assigned_file_template_id;
+      const activeTeamLeadIds = freshFH?.team_lead_ids || user.team_lead_ids || [];
+
       // 1. Fetch the assigned file form template
-      if (user.assigned_file_template_id) {
+      if (activeFileTemplateId) {
         const { data: tplData } = await supabase
           .from('file_form_templates')
           .select('*')
-          .eq('id', user.assigned_file_template_id)
+          .eq('id', activeFileTemplateId)
           .single();
         if (tplData) setTemplate(tplData);
       }
@@ -87,12 +100,12 @@ export default function FileHandlerDashboard() {
       const submittedLeadIds = submitted.map(fs => fs.original_lead_id);
 
       // 3. Fetch Pending Leads (Closed by Team Leads assigned to this handler)
-      if (user.team_lead_ids && user.team_lead_ids.length > 0) {
+      if (activeTeamLeadIds && activeTeamLeadIds.length > 0) {
         // Fetch the assigned users for those team leads
         const { data: tlData } = await supabase
           .from('surveyors')
           .select('id, full_name, assigned_users')
-          .in('id', user.team_lead_ids);
+          .in('id', activeTeamLeadIds);
         
         let surveyorIds: string[] = [];
         const tlNameMap = new Map<string, string>();

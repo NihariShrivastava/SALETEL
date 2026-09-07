@@ -29,7 +29,23 @@ export default function SurveyorHistory() {
     
     const fetchAssignedData = async () => {
       try {
-        const domainIdsToFetch = user.assigned_domains || [];
+        let domainIdsToFetch = user.assigned_domains || [];
+
+        if (domainIdsToFetch.length === 0) {
+          const { data: freshSurveyor } = await supabase
+            .from('surveyors')
+            .select('assigned_domains, domain_id')
+            .eq('id', user.id)
+            .single();
+
+          if (freshSurveyor?.assigned_domains && freshSurveyor.assigned_domains.length > 0) {
+            domainIdsToFetch = freshSurveyor.assigned_domains;
+          } else if (freshSurveyor?.domain_id) {
+            domainIdsToFetch = [freshSurveyor.domain_id];
+          } else if (user.domain_id) {
+            domainIdsToFetch = [user.domain_id];
+          }
+        }
 
         if (domainIdsToFetch.length > 0) {
           const { data: domainsData } = await supabase

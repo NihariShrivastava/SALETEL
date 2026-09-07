@@ -5,7 +5,7 @@ import { Shield, User, LogOut } from 'lucide-react';
 import { Badge } from '../../components/ui/Badge';
 
 export default function SurveyorLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, role } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -29,7 +29,7 @@ export default function SurveyorLayout() {
         <div className="flex items-center gap-2 sm:gap-6">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden sm:block">
-              <Badge variant="blue">{user?.role || 'Loan Collection'}</Badge>
+              <Badge variant="blue">{user?.user_role?.name || (role ? role.toUpperCase() : 'Surveyor')}</Badge>
             </div>
             <div className="flex items-center gap-2 text-sm text-white font-medium pl-0 sm:pl-3 sm:border-l border-bg-border">
               <User className="w-4 h-4 text-accent-blue shrink-0" />

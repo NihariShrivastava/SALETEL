@@ -88,14 +88,14 @@ export default function FillForm({ domainId, templateId, onSuccess, onCancel, is
     
     const fetchTemplate = async () => {
       try {
-        let query = supabase.from('form_templates').select('*').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false');
+        let query = supabase.from('form_templates').select('*').or('is_deleted.is.null,is_deleted.eq.false');
         if (activeTemplateIdParam) {
           query = query.eq('id', activeTemplateIdParam);
         } else if (activeDomainId) {
-          query = query.eq('domain_id', activeDomainId);
+          query = query.eq('domain_id', activeDomainId).order('created_at', { ascending: false });
         }
         
-        const { data, error } = await query.single();
+        const { data, error } = await query.limit(1).maybeSingle();
           
         if (error) {
           if (error.code === 'PGRST116') {

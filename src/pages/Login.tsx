@@ -55,7 +55,7 @@ export default function Login() {
           .maybeSingle(),
         supabase
           .from('surveyors')
-          .select('id, username, full_name, is_active, user_role_id, assigned_users, team_lead_ids, user_role:user_roles(name)')
+          .select('*, user_role:user_roles(name)')
           .ilike('username', username)
           .eq('password_hash', password)
           .maybeSingle()
@@ -85,8 +85,8 @@ export default function Login() {
         
         let normalizedRole: 'surveyor' | 'telecaller' | 'team_lead' | 'file_handler' | 'manager' = 'surveyor';
         if (roleName.includes('telecaller')) normalizedRole = 'telecaller';
-        if (roleName.includes('team lead')) normalizedRole = 'team_lead';
-        if (roleName.includes('file handler')) normalizedRole = 'file_handler';
+        if (roleName.includes('team lead') || roleName.includes('teamlead') || roleName.includes('team_lead')) normalizedRole = 'team_lead';
+        if (roleName.includes('file handler') || roleName.includes('filehandler') || roleName.includes('file_handler')) normalizedRole = 'file_handler';
         if (roleName.includes('manager')) normalizedRole = 'manager';
 
         login(surveyorData, normalizedRole);

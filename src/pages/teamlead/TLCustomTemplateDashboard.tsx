@@ -28,7 +28,7 @@ export default function CustomTemplateDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [telecallers, setTelecallers] = useState<any[]>([]);
@@ -42,7 +42,7 @@ export default function CustomTemplateDashboard() {
   }, [templateId]);
 
   const fetchData = async () => {
-    if (!user?.assigned_users || user.assigned_users.length === 0) {
+    if (!user) {
       setSubmissions([]);
       setIsLoading(false);
       return;
@@ -50,6 +50,21 @@ export default function CustomTemplateDashboard() {
 
     setIsLoading(true);
     try {
+      const { data: freshTL } = await supabase
+        .from('surveyors')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (freshTL && updateUser) {
+        updateUser(freshTL);
+      }
+
+      const activeAssignedUsers = freshTL?.assigned_users || user.assigned_users || [];
+      if (activeAssignedUsers.length === 0) {
+        setSubmissions([]);
+        setIsLoading(false);
+        return;
+      }
       // Fetch template
       const { data: templateData, error: templateError } = await supabase
         .from('form_templates')
@@ -66,7 +81,7 @@ export default function CustomTemplateDashboard() {
         .from('submissions')
         .select(`*, surveyors!surveyor_id(username, full_name)`)
         .eq('form_template_id', templateId)
-        .in('surveyor_id', user.assigned_users)
+        .in('surveyor_id', activeAssignedUsers)
         .is('telecaller_id', null)
         .order('submitted_at', { ascending: false });
 
