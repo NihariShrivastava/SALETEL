@@ -161,7 +161,7 @@ function App() {
         {/* Team Lead Routes */}
         <Route path="/teamlead" element={
           <TeamLeadRoute>
-            <SharedDashboardLayout title="Team Lead Portal" homePath="/teamlead/dashboard" />
+            <SharedDashboardLayout title="Team Lead Portal" homePath="/teamlead/dashboard" maxWidth="max-w-[1600px]" />
           </TeamLeadRoute>
         }>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -193,7 +193,7 @@ function App() {
         {/* File Handler Routes */}
         <Route path="/filehandler" element={
           <FileHandlerRoute>
-            <SharedDashboardLayout title="File Handler Portal" homePath="/filehandler/dashboard" />
+            <SharedDashboardLayout title="File Handler Portal" homePath="/filehandler/dashboard" maxWidth="max-w-[1600px]" />
           </FileHandlerRoute>
         }>
           <Route index element={<Navigate to="dashboard" replace />} />

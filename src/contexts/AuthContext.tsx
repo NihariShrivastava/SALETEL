@@ -44,8 +44,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateUser = (updatedUser: any) => {
-    localStorage.setItem('saletel_user', JSON.stringify(updatedUser));
-    setAuthState(prev => ({ ...prev, user: updatedUser }));
+    setAuthState(prev => {
+      if (JSON.stringify(prev.user) === JSON.stringify(updatedUser)) {
+        return prev;
+      }
+      localStorage.setItem('saletel_user', JSON.stringify(updatedUser));
+      return { ...prev, user: updatedUser };
+    });
   };
 
   return (

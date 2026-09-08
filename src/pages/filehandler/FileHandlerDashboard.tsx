@@ -53,21 +53,21 @@ export default function FileHandlerDashboard() {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id]);
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       // Live sync profile for file handler
       const { data: freshFH } = await supabase
         .from('surveyors')
-        .select('*')
+        .select('*, user_role:user_roles(name)')
         .eq('id', user.id)
         .single();
-      if (freshFH && updateUser) {
-        updateUser(freshFH);
-      }
 
       const activeFileTemplateId = freshFH?.assigned_file_template_id || user.assigned_file_template_id;
       const activeTeamLeadIds = freshFH?.team_lead_ids || user.team_lead_ids || [];
@@ -112,6 +112,8 @@ export default function FileHandlerDashboard() {
         
         if (tlData) {
           tlData.forEach(tl => {
+            surveyorIds.push(tl.id);
+            tlNameMap.set(tl.id, tl.full_name);
             if (tl.assigned_users) {
               surveyorIds = [...surveyorIds, ...tl.assigned_users];
               tl.assigned_users.forEach((sId: string) => {
@@ -336,7 +338,7 @@ export default function FileHandlerDashboard() {
             <h2 className="text-3xl font-bold text-white tracking-tight mb-2">File Handler Dashboard</h2>
             <p className="text-text-secondary">Process and clear files from team lead submissions.</p>
           </div>
-          <div className="flex gap-4 items-center">
+          <div className="flex flex-wrap gap-4 items-center">
              <button 
                onClick={handleNewFile}
                className="bg-accent-blue/10 border border-accent-blue/20 rounded-lg p-4 flex flex-col items-center justify-center min-w-[100px] hover:bg-accent-blue/20 hover:border-accent-blue/40 transition-all cursor-pointer group"
@@ -410,7 +412,7 @@ export default function FileHandlerDashboard() {
           {activeTab === 'pending' && (
             <div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
+                <table className="w-full text-left border-collapse text-sm min-w-[700px]">
                   <thead>
                     <tr className="bg-bg-secondary/50 text-text-muted text-[10px] uppercase tracking-widest">
                       <th className="py-4 px-6 font-semibold">Lead Form</th>
@@ -455,7 +457,7 @@ export default function FileHandlerDashboard() {
           {activeTab === 'submitted' && (
             <div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
+                <table className="w-full text-left border-collapse text-sm min-w-[700px]">
                   <thead>
                     <tr className="bg-bg-secondary/50 text-text-muted text-[10px] uppercase tracking-widest">
                       <th className="py-4 px-6 font-semibold">File Template</th>
@@ -511,7 +513,7 @@ export default function FileHandlerDashboard() {
           {activeTab === 'cleared' && (
             <div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
+                <table className="w-full text-left border-collapse text-sm min-w-[700px]">
                   <thead>
                     <tr className="bg-bg-secondary/50 text-text-muted text-[10px] uppercase tracking-widest">
                       <th className="py-4 px-6 font-semibold">File Template</th>

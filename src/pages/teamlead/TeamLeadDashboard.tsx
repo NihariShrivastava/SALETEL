@@ -60,7 +60,7 @@ export default function TeamLeadDashboard() {
       // Live sync profile to get latest assigned_users
       const { data: freshTL } = await supabase
         .from('surveyors')
-        .select('*')
+        .select('*, user_role:user_roles(name)')
         .eq('id', user.id)
         .single();
       if (freshTL && updateUser) {
@@ -166,7 +166,7 @@ export default function TeamLeadDashboard() {
   useEffect(() => {
     fetchSubmissions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id]);
 
 
   if (isLoading) {

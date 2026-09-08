@@ -1903,14 +1903,14 @@ export default function MasterReports() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         <Card title={`Analytics: ${tabs.find(t => t.id === activeTab)?.label}`} className="lg:col-span-2 h-[400px] flex flex-col">
-          <div className="flex-1 mt-4">
+          <div className="w-full h-[320px] min-h-[320px] mt-4">
             {isLoading ? (
               <div className="h-full flex flex-col items-center justify-center text-text-muted border-2 border-dashed border-bg-border rounded-xl">
                 <Loader2 className="w-8 h-8 animate-spin text-accent-blue mb-4" />
                 <p>Loading analytics...</p>
               </div>
             ) : activeTab === 'domain' ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={dataDomains}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#252840" vertical={false} />
                   <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
@@ -1927,7 +1927,7 @@ export default function MasterReports() {
                 </BarChart>
               </ResponsiveContainer>
             ) : activeTab === 'person' ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={dataSurveyors} layout="vertical" margin={{ left: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#252840" horizontal={false} />
                   <XAxis type="number" stroke="#64748b" fontSize={12} />

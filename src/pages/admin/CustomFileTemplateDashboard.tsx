@@ -425,11 +425,11 @@ export default function CustomFileTemplateDashboard({ backPath = '/admin/reports
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Status Distribution Chart */}
             <Card title="File Status Distribution" className="h-[320px] flex flex-col">
-              <div className="flex-1 mt-2">
+              <div className="w-full h-[240px] min-h-[240px] mt-2">
                 {statusChartData.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-text-muted italic text-xs">No status data</div>
                 ) : (
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={240}>
                     <PieChart>
                       <Pie
                         data={statusChartData}
@@ -469,11 +469,11 @@ export default function CustomFileTemplateDashboard({ backPath = '/admin/reports
 
               return (
                 <Card title={f.label} className="h-[320px] flex flex-col">
-                  <div className="flex-1 mt-2">
+                  <div className="w-full h-[240px] min-h-[240px] mt-2">
                     {chartData.length === 0 ? (
                       <div className="h-full flex items-center justify-center text-text-muted italic text-xs">No records for this field</div>
                     ) : (
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height={240}>
                         <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#252840" vertical={false} />
                           <XAxis dataKey="name" stroke="#64748b" fontSize={11} angle={-25} textAnchor="end" />
@@ -509,11 +509,11 @@ export default function CustomFileTemplateDashboard({ backPath = '/admin/reports
 
                 return (
                   <Card key={f.id} title={f.label} className="h-[260px] flex flex-col">
-                    <div className="flex-1 mt-1">
+                    <div className="w-full h-[190px] min-h-[190px] mt-1">
                       {chartData.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-text-muted italic text-xs">No records</div>
                       ) : (
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height={190}>
                           <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#252840" vertical={false} />
                             <XAxis dataKey="name" stroke="#64748b" fontSize={10} angle={-20} textAnchor="end" />
