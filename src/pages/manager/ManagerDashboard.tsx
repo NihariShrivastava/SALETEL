@@ -176,7 +176,7 @@ export default function ManagerDashboard() {
             data,
             surveyor:surveyors!surveyor_id(full_name, username),
             telecaller:surveyors!telecaller_id(id, full_name, username),
-            form_templates(name)
+            form_templates(name, fields)
           `)
           .in('surveyor_id', allManagedSurveyorIds)
           .order('submitted_at', { ascending: false });

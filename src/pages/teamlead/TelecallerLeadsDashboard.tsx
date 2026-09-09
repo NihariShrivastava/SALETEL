@@ -7,6 +7,8 @@ import { FileText, Loader2, X, ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import type { FieldConfig } from '../../types';
+import ViewFormModal from '../../components/common/ViewFormModal';
 
 export default function TelecallerLeadsDashboard() {
   const { telecallerId } = useParams();
@@ -16,6 +18,59 @@ export default function TelecallerLeadsDashboard() {
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [selectedSub, setSelectedSub] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingFields, setIsLoadingFields] = useState(false);
+
+  const handleViewForm = async (sub: any) => {
+    if (!sub) return;
+    setSelectedSub(sub);
+
+    const tmpl = Array.isArray(sub.form_templates) ? sub.form_templates[0] : sub.form_templates;
+    const hasFields = tmpl?.fields && Array.isArray(tmpl.fields) && tmpl.fields.length > 0;
+
+    if (!hasFields && sub.form_template_id) {
+      setIsLoadingFields(true);
+      try {
+        const { data: tmplData } = await supabase
+          .from('form_templates')
+          .select('id, name, fields')
+          .eq('id', sub.form_template_id)
+          .single();
+
+        let resolvedTmpl = tmplData;
+
+        if (!resolvedTmpl || !resolvedTmpl.fields) {
+          const { data: fileTmpl } = await supabase
+            .from('file_form_templates')
+            .select('id, name, fields')
+            .eq('id', sub.form_template_id)
+            .single();
+          if (fileTmpl) resolvedTmpl = fileTmpl;
+        }
+
+        if (resolvedTmpl?.fields) {
+          const updatedTmpl = {
+            ...(tmpl || {}),
+            name: resolvedTmpl.name || tmpl?.name || 'Form Submission',
+            fields: resolvedTmpl.fields
+          };
+
+          setSelectedSub((prev: any) => prev && prev.id === sub.id ? {
+            ...prev,
+            form_templates: updatedTmpl
+          } : prev);
+
+          setSubmissions(prev => prev.map(s => s.id === sub.id ? {
+            ...s,
+            form_templates: updatedTmpl
+          } : s));
+        }
+      } catch (err) {
+        console.error('Failed to load form template fields:', err);
+      } finally {
+        setIsLoadingFields(false);
+      }
+    }
+  };
   
   // Drill-down filters
   const [filters, setFilters] = useState({
@@ -235,7 +290,7 @@ export default function TelecallerLeadsDashboard() {
                             <div className="text-xs">{format(new Date(sub.submitted_at), 'hh:mm a')}</div>
                           </td>
                           <td className="py-3 px-6">
-                            <span className="font-medium text-white">{sub.form_templates?.name || 'Unknown Form'}</span>
+                            <span className="font-medium text-white">{(Array.isArray(sub.form_templates) ? sub.form_templates[0]?.name : sub.form_templates?.name) || 'Unknown Form'}</span>
                           </td>
                           <td className="py-3 px-6 text-text-secondary">{sub.surveyor?.full_name || sub.surveyor?.username || 'Unknown'}</td>
                           <td className="py-3 px-6">
@@ -245,7 +300,7 @@ export default function TelecallerLeadsDashboard() {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              onClick={() => setSelectedSub(sub)}
+                              onClick={() => handleViewForm(sub)}
                             >
                               <FileText className="w-4 h-4 mr-2" /> View Form
                             </Button>
@@ -270,97 +325,10 @@ export default function TelecallerLeadsDashboard() {
 
       {/* Submission Review Modal */}
       {selectedSub && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 shadow-2xl">
-            <div className="p-4 border-b border-bg-border flex justify-between items-center bg-bg-secondary shrink-0">
-              <div>
-                <h3 className="font-bold text-white text-lg">{selectedSub.form_templates?.name || 'Form Submission'}</h3>
-                <p className="text-xs text-text-muted mt-1">Submitted by {selectedSub.surveyor?.full_name} on {format(new Date(selectedSub.submitted_at), 'MMM dd, yyyy hh:mm a')}</p>
-              </div>
-              <button onClick={() => setSelectedSub(null)} className="text-text-muted hover:text-white p-1 transition-colors bg-bg-primary rounded">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto space-y-6 bg-bg-primary flex-1">
-              <div className="space-y-4">
-              {(() => {
-                if (!selectedSub.data || Object.keys(selectedSub.data).length === 0) {
-                  return <div className="text-text-muted italic text-sm text-center py-8">No data entries found.</div>;
-                }
-
-                let entriesToRender: {key: string, label: string, value: any}[] = [];
-                if (selectedSub.form_templates?.fields) {
-                   entriesToRender = selectedSub.form_templates.fields
-                     .filter((f: any) => selectedSub.data[f.id] !== undefined)
-                     .map((f: any) => ({
-                       key: f.id,
-                       label: f.label || f.id,
-                       value: selectedSub.data[f.id]
-                     }));
-                } else {
-                   entriesToRender = Object.entries(selectedSub.data).map(([k, v]) => ({
-                       key: k,
-                       label: k,
-                       value: v
-                   }));
-                }
-
-                return entriesToRender.map(({key, label, value}) => {
-                  let displayValue = value as string;
-                  if (typeof value === 'object' && value !== null) {
-                    if ('lat' in value && 'lng' in value) {
-                       displayValue = `Lat: ${(value as any).lat}, Lng: ${(value as any).lng}`;
-                    } else if (Array.isArray(value)) {
-                       displayValue = value.join(', ');
-                    } else {
-                       displayValue = JSON.stringify(value);
-                    }
-                  }
-
-                  return (
-                    <div key={key} className="bg-bg-secondary rounded-lg border border-bg-border p-4">
-                      <span className="block text-xs uppercase text-text-secondary mb-2 font-bold tracking-widest">{label}</span>
-                      {typeof displayValue === 'string' && displayValue.startsWith('http') && displayValue.includes('supabase.co/storage/v1/object/public/') ? (
-                        <div className="mt-2 bg-black/20 p-2 rounded border border-bg-border inline-block">
-                          {displayValue.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                            <a href={displayValue} target="_blank" rel="noreferrer" className="block">
-                              <img src={displayValue} alt={key} className="max-h-48 rounded object-contain" />
-                            </a>
-                          ) : (
-                            <a href={displayValue} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline text-sm break-all">
-                              View Uploaded Document
-                            </a>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-base text-white break-words">{displayValue}</span>
-                      )}
-                    </div>
-                  );
-                });
-              })()}
-              </div>
-            </div>
-            
-            <div className="p-4 border-t border-bg-border bg-bg-secondary shrink-0">
-              <div className="flex justify-between items-center text-sm">
-                <div className="text-text-secondary">
-                  Status: <Badge variant={
-                    selectedSub.status === 'approved' ? 'green' : 
-                    selectedSub.status === 'rejected' ? 'red' :
-                    selectedSub.status === 'submitted' ? 'blue' : 'yellow'
-                  }>{selectedSub.status === 'reverted' ? 'Reverted' : selectedSub.status}</Badge>
-                </div>
-                {selectedSub.admin_notes && (
-                  <div className="text-text-muted italic max-w-sm truncate">
-                    Note: {selectedSub.admin_notes}
-                  </div>
-                )}
-              </div>
-            </div>
-          </Card>
-        </div>
+        <ViewFormModal
+          submission={selectedSub}
+          onClose={() => setSelectedSub(null)}
+        />
       )}
     </div>
   );

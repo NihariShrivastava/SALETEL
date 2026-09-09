@@ -58,8 +58,36 @@ export default function LeadViewModal({ lead, onClose, onStatusUpdate }: LeadVie
     }
   };
 
-  // Ensure fields are sorted by their defined order
-  const fields = lead.form_templates?.fields ? [...lead.form_templates.fields].sort((a, b) => a.order - b.order) : [];
+  // State for resolving template fields
+  const [resolvedFields, setResolvedFields] = useState<any[]>([]);
+  const [templateName, setTemplateName] = useState<string>('Lead Details');
+
+  React.useEffect(() => {
+    const tmpl = Array.isArray(lead?.form_templates) ? lead.form_templates[0] : lead?.form_templates;
+    let fields = tmpl?.fields;
+    if (typeof fields === 'string') {
+      try { fields = JSON.parse(fields); } catch {}
+    }
+
+    if (fields && Array.isArray(fields) && fields.length > 0) {
+      setResolvedFields([...fields].sort((a: any, b: any) => (a.order || 0) - (b.order || 0)));
+      setTemplateName(tmpl?.name || 'Lead Details');
+      return;
+    }
+
+    if (lead?.form_template_id) {
+      import('../common/ViewFormModal').then(({ getFormTemplateFields }) => {
+        getFormTemplateFields(lead.form_template_id, tmpl?.name).then(res => {
+          if (res?.fields) {
+            setResolvedFields([...res.fields].sort((a: any, b: any) => (a.order || 0) - (b.order || 0)));
+            setTemplateName(res.name || tmpl?.name || 'Lead Details');
+          }
+        });
+      });
+    }
+  }, [lead]);
+
+  const fields = resolvedFields;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -67,7 +95,7 @@ export default function LeadViewModal({ lead, onClose, onStatusUpdate }: LeadVie
         <div className="p-4 border-b border-bg-border flex justify-between items-center bg-bg-secondary shrink-0">
           <div>
             <h3 className="font-bold text-white text-lg">Lead Details</h3>
-            <p className="text-xs text-text-muted mt-1">From {lead.form_templates?.name || 'Unknown Form'}</p>
+            <p className="text-xs text-text-muted mt-1">From {templateName}</p>
           </div>
           <button onClick={onClose} className="text-text-muted hover:text-white p-1 transition-colors bg-bg-primary rounded">
             <X className="w-5 h-5" />
@@ -77,7 +105,9 @@ export default function LeadViewModal({ lead, onClose, onStatusUpdate }: LeadVie
         <div className="p-6 overflow-y-auto space-y-6 bg-bg-primary flex-1 custom-scrollbar">
           <div className="space-y-4">
             {fields.map(field => {
-              const value = lead.data?.[field.id];
+              let value = lead.data?.[field.id];
+              if (value === undefined && field.label) value = lead.data?.[field.label];
+              if (value === undefined && field.name) value = lead.data?.[field.name];
               let displayValue = value;
               
               if (value !== undefined && value !== null) {

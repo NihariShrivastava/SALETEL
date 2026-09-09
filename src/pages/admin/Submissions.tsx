@@ -33,7 +33,7 @@ export default function Submissions() {
   const fetchData = async () => {
     try {
       const [subsRes, domainsRes, fhRes, formsRes] = await Promise.all([
-        supabase.from('submissions').select('id, submitted_at, status, lead_status, domain_id, admin_notes, surveyor_id, surveyors!surveyor_id(full_name), domains(id, name), file_submissions(file_handler_id, file_form_template_id)').order('submitted_at', { ascending: false }),
+        supabase.from('submissions').select('id, submitted_at, status, lead_status, domain_id, admin_notes, surveyor_id, form_template_id, surveyors!surveyor_id(full_name), domains(id, name), form_templates(name, fields), file_submissions(file_handler_id, file_form_template_id)').order('submitted_at', { ascending: false }),
         supabase.from('domains').select('id, name').or('is_deleted.is.null,is_deleted.eq.false'),
         supabase.from('surveyors').select('id, full_name, user_roles!inner(name)').ilike('user_roles.name', '%File Handler%'),
         supabase.from('file_form_templates').select('id, name').eq('is_active', true).or('is_deleted.is.null,is_deleted.eq.false')
@@ -58,11 +58,11 @@ export default function Submissions() {
     if (!sub) return;
     setSelectedSub(sub);
     setAdminNotes(sub.admin_notes || '');
-    if (!sub.data) {
+    if (!sub.data || !sub.form_templates) {
       try {
         const { data: fullSub } = await supabase
           .from('submissions')
-          .select('data, form_templates(fields)')
+          .select('data, form_template_id, form_templates(name, fields)')
           .eq('id', sub.id)
           .single();
         if (fullSub) {
@@ -337,14 +337,22 @@ export default function Submissions() {
                 }
 
                 let entriesToRender: {key: string, label: string, value: any}[] = [];
-                if (selectedSub.form_templates?.fields) {
-                   entriesToRender = selectedSub.form_templates.fields
-                     .filter((f: any) => selectedSub.data[f.id] !== undefined)
-                     .map((f: any) => ({
-                       key: f.id,
-                       label: f.label || f.id,
-                       value: selectedSub.data[f.id]
-                     }));
+                const rawTmpl = Array.isArray(selectedSub.form_templates)
+                  ? selectedSub.form_templates[0]
+                  : selectedSub.form_templates;
+                const tmplFields = rawTmpl?.fields && Array.isArray(rawTmpl.fields) ? rawTmpl.fields : null;
+
+                if (tmplFields && tmplFields.length > 0) {
+                   entriesToRender = tmplFields
+                     .map((f: any) => {
+                       let val = selectedSub.data[f.id];
+                       if (val === undefined && f.label) val = selectedSub.data[f.label];
+                       return {
+                         key: f.id,
+                         label: f.label || f.id,
+                         value: val ?? 'Not answered'
+                       };
+                     });
                 } else {
                    entriesToRender = Object.entries(selectedSub.data).map(([k, v]) => ({
                        key: k,

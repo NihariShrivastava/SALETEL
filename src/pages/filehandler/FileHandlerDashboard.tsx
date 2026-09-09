@@ -13,8 +13,9 @@ import FormFieldRender from '../../components/form-builder/FormFieldRender';
 const findValueByLabelRegex = (lead: any, regex: RegExp) => {
   if (!lead || !lead.data) return '-';
   
-  if (lead.form_templates && Array.isArray(lead.form_templates.fields)) {
-    const field = lead.form_templates.fields.find((f: any) => regex.test(f.label));
+  const tmpl = Array.isArray(lead.form_templates) ? lead.form_templates[0] : lead.form_templates;
+  if (tmpl && Array.isArray(tmpl.fields)) {
+    const field = tmpl.fields.find((f: any) => regex.test(f.label));
     if (field && lead.data[field.id]) {
       return lead.data[field.id];
     }
@@ -665,10 +666,14 @@ export default function FileHandlerDashboard() {
                   <p className="text-text-muted text-sm italic">No data recorded for this lead.</p>
                 ) : (
                   <div className="space-y-3">
-                    {((selectedLead as any).form_templates?.fields 
-                        ? [...(selectedLead as any).form_templates.fields].sort((a: any, b: any) => a.order - b.order)
-                        : Object.keys(selectedLead.data).map(key => ({ id: key, label: key }))
-                      ).map((field: any) => {
+                    {(() => {
+                      const tmpl = Array.isArray((selectedLead as any).form_templates)
+                        ? (selectedLead as any).form_templates[0]
+                        : (selectedLead as any).form_templates;
+                      const fields = tmpl?.fields && Array.isArray(tmpl.fields)
+                        ? [...tmpl.fields].sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
+                        : Object.keys(selectedLead.data).map(key => ({ id: key, label: key }));
+                      return fields.map((field: any) => {
                         const value = selectedLead.data[field.id];
                         if (value === undefined || value === null || value === '') return null;
                         
@@ -695,7 +700,8 @@ export default function FileHandlerDashboard() {
                             </span>
                           </div>
                         );
-                    })}
+                      });
+                    })()}
                   </div>
                 )}
               </div>

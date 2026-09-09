@@ -4,9 +4,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { ArrowLeft, Download, Loader2, PieChart as PieChartIcon, BarChart as BarChartIcon, X } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, PieChart as PieChartIcon, BarChart as BarChartIcon, X, Eye } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { FormTemplate, FieldConfig, Submission } from '../../types';
+import ViewFormModal from '../../components/common/ViewFormModal';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -34,6 +35,7 @@ export default function CustomTemplateDashboard() {
   const [telecallers, setTelecallers] = useState<any[]>([]);
   const [selectedTelecaller, setSelectedTelecaller] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
+  const [selectedSub, setSelectedSub] = useState<any | null>(null);
 
   useEffect(() => {
     if (templateId) {
@@ -507,12 +509,13 @@ export default function CustomTemplateDashboard() {
                       ))}
                       <th className="py-3 px-4 font-semibold">Status</th>
                       <th className="py-3 px-4 font-semibold">Telecaller</th>
+                      <th className="py-3 px-4 font-semibold text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedSubmissions.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-8 text-center text-text-muted italic">No matching submissions found.</td>
+                        <td colSpan={template.fields.length + 5} className="py-8 text-center text-text-muted italic">No matching submissions found.</td>
                       </tr>
                     ) : (
                       paginatedSubmissions.map(sub => (
@@ -554,6 +557,16 @@ export default function CustomTemplateDashboard() {
                           </td>
                           <td className="py-3 px-4 text-text-secondary text-xs">
                             {sub.telecaller_id ? (telecallers.find(t => t.id === sub.telecaller_id)?.full_name || 'Assigned') : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedSub({ ...sub, form_templates: template })}
+                              className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10 text-xs py-1"
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" /> View Form
+                            </Button>
                           </td>
                         </tr>
                       ))
@@ -634,6 +647,13 @@ export default function CustomTemplateDashboard() {
             </div>
           </Card>
         </div>
+      )}
+      {/* View Form Modal */}
+      {selectedSub && (
+        <ViewFormModal
+          submission={selectedSub}
+          onClose={() => setSelectedSub(null)}
+        />
       )}
     </div>
   );

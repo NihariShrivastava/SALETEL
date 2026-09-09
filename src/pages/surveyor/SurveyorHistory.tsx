@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { FileText, ArrowLeft, Loader2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format, startOfDay, endOfDay } from 'date-fns';
+import { Loader2, ArrowLeft, FileText } from 'lucide-react';
+import ViewFormModal from '../../components/common/ViewFormModal';
 
 export default function SurveyorHistory() {
   const navigate = useNavigate();
@@ -209,94 +210,10 @@ sub.status === 'submitted' ? 'blue' : 'gray'
 
       {/* Submission Detail Modal */}
       {selectedSub && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <Card className="w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col p-0 border-accent-blue/50 shadow-2xl shadow-accent-blue/10">
-            <div className="p-4 border-b border-bg-border flex justify-between items-center bg-bg-secondary">
-              <h3 className="font-bold text-white">Submission Details</h3>
-              <button onClick={() => setSelectedSub(null)} className="text-text-muted hover:text-white p-1 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto space-y-4 bg-bg-secondary">
-              <div className="flex justify-between items-center pb-4 border-b border-bg-border">
-                <span className="text-text-secondary text-sm font-medium">{format(new Date(selectedSub.submitted_at), 'MMM dd, yyyy hh:mm a')}</span>
-                <Badge variant={
-                  selectedSub.status === 'submitted' ? 'blue' : 
-selectedSub.status === 'submitted' ? 'blue' : 'gray'
-                }>
-{selectedSub.status}
-                </Badge>
-              </div>
-              <div className="space-y-4">
-              {(() => {
-                if (!selectedSub.data || Object.keys(selectedSub.data).length === 0) {
-                  return <div className="text-text-muted italic text-sm text-center py-8">No data entries found.</div>;
-                }
-
-                let entriesToRender: {key: string, label: string, value: any}[] = [];
-                if (selectedSub.form_templates?.fields) {
-                   entriesToRender = selectedSub.form_templates.fields
-                     .filter((f: any) => selectedSub.data[f.id] !== undefined)
-                     .map((f: any) => ({
-                       key: f.id,
-                       label: f.label || f.id,
-                       value: selectedSub.data[f.id]
-                     }));
-                } else {
-                   entriesToRender = Object.entries(selectedSub.data).map(([k, v]) => ({
-                       key: k,
-                       label: k,
-                       value: v
-                   }));
-                }
-
-                return entriesToRender.map(({key, label, value}) => {
-                  let displayValue = value as string;
-                  if (typeof value === 'object' && value !== null) {
-                    if ('lat' in value && 'lng' in value) {
-                       displayValue = `Lat: ${(value as any).lat}, Lng: ${(value as any).lng}`;
-                    } else if (Array.isArray(value)) {
-                       displayValue = value.join(', ');
-                    } else {
-                       displayValue = JSON.stringify(value);
-                    }
-                  }
-
-                  return (
-                    <div key={key} className="bg-bg-primary rounded-lg border border-bg-border p-3">
-                      <span className="block text-[10px] uppercase text-text-secondary mb-1 font-semibold tracking-widest">{label}</span>
-                      {typeof displayValue === 'string' && displayValue.startsWith('http') && displayValue.includes('supabase.co/storage/v1/object/public/') ? (
-                        <div className="mt-1">
-                          {displayValue.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                            <a href={displayValue} target="_blank" rel="noreferrer" className="block">
-                              <img src={displayValue} alt={key} className="max-h-32 rounded border border-bg-border object-contain bg-white" />
-                            </a>
-                          ) : (
-                            <a href={displayValue} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline text-sm break-all">
-                              View Uploaded File
-                            </a>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-white break-words">{displayValue}</span>
-                      )}
-                    </div>
-                  );
-                });
-              })()}
-              </div>
-              
-              {selectedSub.admin_notes && (
-                <div className="pt-4 mt-4 border-t border-bg-border">
-                  <h4 className="text-[10px] uppercase tracking-widest text-text-muted font-semibold mb-2">Admin Notes</h4>
-                  <div className="bg-bg-primary rounded-lg p-4 text-sm text-text-secondary border border-bg-border">
-                    {selectedSub.admin_notes}
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
+        <ViewFormModal
+          submission={selectedSub}
+          onClose={() => setSelectedSub(null)}
+        />
       )}
     </div>
   );

@@ -8,6 +8,8 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import type { FieldConfig } from '../../types';
+import ViewFormModal from '../../components/common/ViewFormModal';
 
 const getStatusBadgeVariant = (status?: string) => {
   switch (status?.toLowerCase()) {
@@ -43,6 +45,59 @@ export default function TeamLeadDashboard() {
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [reassignTo, setReassignTo] = useState<string>('');
   const [isReassigning, setIsReassigning] = useState(false);
+  const [isLoadingFields, setIsLoadingFields] = useState(false);
+
+  const handleViewForm = async (lead: any) => {
+    if (!lead) return;
+    setSelectedSub(lead);
+
+    const tmpl = Array.isArray(lead.form_templates) ? lead.form_templates[0] : lead.form_templates;
+    const hasFields = tmpl?.fields && Array.isArray(tmpl.fields) && tmpl.fields.length > 0;
+
+    if (!hasFields && lead.form_template_id) {
+      setIsLoadingFields(true);
+      try {
+        const { data: tmplData } = await supabase
+          .from('form_templates')
+          .select('id, name, fields')
+          .eq('id', lead.form_template_id)
+          .single();
+
+        let resolvedTmpl = tmplData;
+
+        if (!resolvedTmpl || !resolvedTmpl.fields) {
+          const { data: fileTmpl } = await supabase
+            .from('file_form_templates')
+            .select('id, name, fields')
+            .eq('id', lead.form_template_id)
+            .single();
+          if (fileTmpl) resolvedTmpl = fileTmpl;
+        }
+
+        if (resolvedTmpl?.fields) {
+          const updatedTmpl = {
+            ...(tmpl || {}),
+            name: resolvedTmpl.name || tmpl?.name || 'Form Submission',
+            fields: resolvedTmpl.fields
+          };
+
+          setSelectedSub((prev: any) => prev && prev.id === lead.id ? {
+            ...prev,
+            form_templates: updatedTmpl
+          } : prev);
+
+          setSubmissions(prev => prev.map(s => s.id === lead.id ? {
+            ...s,
+            form_templates: updatedTmpl
+          } : s));
+        }
+      } catch (err) {
+        console.error('Failed to load form template fields:', err);
+      } finally {
+        setIsLoadingFields(false);
+      }
+    }
+  };
 
   useEffect(() => {
     setSlidePage(1);
@@ -81,7 +136,7 @@ export default function TeamLeadDashboard() {
           *,
           surveyor:surveyors!surveyor_id(full_name, username),
           telecaller:surveyors!telecaller_id(id, full_name, username),
-          form_templates(name)
+          form_templates(name, fields)
         `)
         .in('surveyor_id', activeAssignedUsers)
         .order('submitted_at', { ascending: false });
@@ -364,7 +419,8 @@ export default function TeamLeadDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {Array.from(new Set(submissions.filter(s => s.form_template_id).map(s => s.form_template_id))).map(templateId => {
             const templateSubs = submissions.filter(s => s.form_template_id === templateId);
-            const templateName = templateSubs[0]?.form_templates?.name || 'Unknown Form';
+            const tmpl = Array.isArray(templateSubs[0]?.form_templates) ? templateSubs[0]?.form_templates[0] : templateSubs[0]?.form_templates;
+            const templateName = tmpl?.name || 'Unknown Form';
             return (
               <div key={templateId as string} className="bg-bg-primary border border-bg-border rounded-xl p-5 hover:border-accent-blue/50 transition-colors">
                 <h4 className="font-bold text-white text-lg mb-1">{templateName}</h4>
@@ -566,14 +622,14 @@ export default function TeamLeadDashboard() {
                           className="rounded border-bg-border bg-bg-secondary focus:ring-accent-blue focus:ring-offset-bg-primary cursor-pointer"
                         />
                       </td>
-                      <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
+                      <td className="py-3 px-4 text-white font-medium">{(Array.isArray(lead.form_templates) ? lead.form_templates[0]?.name : lead.form_templates?.name) || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unknown'}</td>
                       <td className="py-3 px-4 text-text-secondary">{lead.surveyor?.full_name || lead.surveyor?.username}</td>
                       <td className="py-3 px-4">
                         <Badge variant={getStatusBadgeVariant(lead.lead_status) as any}>{lead.lead_status?.replace(/_/g, ' ') || 'new'}</Badge>
                       </td>
                       <td className="py-3 px-4 text-right flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
+                        <Button size="sm" variant="outline" onClick={() => handleViewForm(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
                           View Form
                         </Button>
                       </td>
@@ -604,14 +660,14 @@ export default function TeamLeadDashboard() {
                 <tbody>
                   {paginatedImmediateLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
-                      <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
+                      <td className="py-3 px-4 text-white font-medium">{(Array.isArray(lead.form_templates) ? lead.form_templates[0]?.name : lead.form_templates?.name) || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
                       <td className="py-3 px-4 text-text-secondary">{lead.surveyor?.full_name || lead.surveyor?.username}</td>
                       <td className="py-3 px-4">
                         <Badge variant={getStatusBadgeVariant(lead.lead_status) as any}>{lead.lead_status?.replace(/_/g, ' ') || 'new'}</Badge>
                       </td>
                       <td className="py-3 px-4 text-right flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
+                        <Button size="sm" variant="outline" onClick={() => handleViewForm(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
                           View Form
                         </Button>
                         <Button size="sm" onClick={() => handleCloseLead(lead.id)} className="bg-accent-blue text-white hover:bg-blue-600 border-none">
@@ -645,14 +701,14 @@ export default function TeamLeadDashboard() {
                 <tbody>
                   {paginatedRevertedLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
-                      <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
+                      <td className="py-3 px-4 text-white font-medium">{(Array.isArray(lead.form_templates) ? lead.form_templates[0]?.name : lead.form_templates?.name) || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
                       <td className="py-3 px-4">
                         <Badge variant={getStatusBadgeVariant(lead.lead_status) as any}>{lead.lead_status?.replace(/_/g, ' ') || 'new'}</Badge>
                       </td>
                       <td className="py-3 px-4 text-text-secondary max-w-xs truncate" title={lead.telecaller_remark}>{lead.telecaller_remark || 'No remark'}</td>
                       <td className="py-3 px-4 text-right flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
+                        <Button size="sm" variant="outline" onClick={() => handleViewForm(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
                           View Form
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => handleDeleteLead(lead.id)} className="text-red-500 border-red-500/30 hover:bg-red-500/10">
@@ -686,14 +742,14 @@ export default function TeamLeadDashboard() {
                 <tbody>
                   {paginatedWrongNumberLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
-                      <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
+                      <td className="py-3 px-4 text-white font-medium">{(Array.isArray(lead.form_templates) ? lead.form_templates[0]?.name : lead.form_templates?.name) || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
                       <td className="py-3 px-4">
                         <Badge variant={getStatusBadgeVariant(lead.lead_status) as any}>{lead.lead_status?.replace(/_/g, ' ') || 'new'}</Badge>
                       </td>
                       <td className="py-3 px-4 text-text-secondary max-w-xs truncate" title={lead.telecaller_remark}>{lead.telecaller_remark || '-'}</td>
                       <td className="py-3 px-4 text-right flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
+                        <Button size="sm" variant="outline" onClick={() => handleViewForm(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
                           View Form
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => handleDeleteLead(lead.id)} className="text-red-500 border-red-500/30 hover:bg-red-500/10">
@@ -727,14 +783,14 @@ export default function TeamLeadDashboard() {
                 <tbody>
                   {paginatedClosedLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
-                      <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
+                      <td className="py-3 px-4 text-white font-medium">{(Array.isArray(lead.form_templates) ? lead.form_templates[0]?.name : lead.form_templates?.name) || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
                       <td className="py-3 px-4">
                         <Badge variant={getStatusBadgeVariant(lead.lead_status) as any}>{lead.lead_status?.replace(/_/g, ' ') || 'new'}</Badge>
                       </td>
                       <td className="py-3 px-4 text-text-secondary max-w-xs truncate" title={lead.telecaller_remark}>{lead.telecaller_remark || '-'}</td>
                       <td className="py-3 px-4 text-right flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
+                        <Button size="sm" variant="outline" onClick={() => handleViewForm(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
                           View Form
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => handleDeleteLead(lead.id)} className="text-red-500 border-red-500/30 hover:bg-red-500/10">
@@ -768,14 +824,14 @@ export default function TeamLeadDashboard() {
                 <tbody>
                   {paginatedDeletedLeads.map(lead => (
                     <tr key={lead.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
-                      <td className="py-3 px-4 text-white font-medium">{lead.form_templates?.name || 'Form Submission'}</td>
+                      <td className="py-3 px-4 text-white font-medium">{(Array.isArray(lead.form_templates) ? lead.form_templates[0]?.name : lead.form_templates?.name) || 'Form Submission'}</td>
                       <td className="py-3 px-4 text-accent-blue">{lead.telecaller?.full_name || 'Unassigned'}</td>
                       <td className="py-3 px-4">
                         <Badge variant={getStatusBadgeVariant(lead.lead_status) as any}>{lead.lead_status?.replace(/_/g, ' ') || 'new'}</Badge>
                       </td>
                       <td className="py-3 px-4 text-text-secondary max-w-xs truncate" title={lead.telecaller_remark}>{lead.telecaller_remark || '-'}</td>
                       <td className="py-3 px-4 text-right flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedSub(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
+                        <Button size="sm" variant="outline" onClick={() => handleViewForm(lead)} className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
                           View Form
                         </Button>
                       </td>
@@ -838,97 +894,10 @@ export default function TeamLeadDashboard() {
 
       {/* Submission Review Modal */}
       {selectedSub && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 shadow-2xl">
-            <div className="p-4 border-b border-bg-border flex justify-between items-center bg-bg-secondary">
-              <div>
-                <h3 className="font-bold text-white text-lg">{selectedSub.form_templates?.name || 'Form Submission'}</h3>
-                <p className="text-xs text-text-muted mt-1">Submitted by {selectedSub.surveyor?.full_name} on {format(new Date(selectedSub.submitted_at), 'MMM dd, yyyy hh:mm a')}</p>
-              </div>
-              <button onClick={() => setSelectedSub(null)} className="text-text-muted hover:text-white p-1 transition-colors bg-bg-primary rounded">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-6 bg-bg-primary flex-1">
-              <div className="space-y-4">
-                {(() => {
-                  if (!selectedSub.data || Object.keys(selectedSub.data).length === 0) {
-                    return <div className="text-text-muted italic text-sm text-center py-8">No data entries found.</div>;
-                  }
-
-                  let entriesToRender: { key: string, label: string, value: any }[] = [];
-                  if (selectedSub.form_templates?.fields) {
-                    entriesToRender = selectedSub.form_templates.fields
-                      .filter((f: any) => selectedSub.data[f.id] !== undefined)
-                      .map((f: any) => ({
-                        key: f.id,
-                        label: f.label || f.id,
-                        value: selectedSub.data[f.id]
-                      }));
-                  } else {
-                    entriesToRender = Object.entries(selectedSub.data).map(([k, v]) => ({
-                      key: k,
-                      label: k,
-                      value: v
-                    }));
-                  }
-
-                  return entriesToRender.map(({ key, label, value }) => {
-                    let displayValue = value as string;
-                    if (typeof value === 'object' && value !== null) {
-                      if ('lat' in value && 'lng' in value) {
-                        displayValue = `Lat: ${(value as any).lat}, Lng: ${(value as any).lng}`;
-                      } else if (Array.isArray(value)) {
-                        displayValue = value.join(', ');
-                      } else {
-                        displayValue = JSON.stringify(value);
-                      }
-                    }
-
-                    return (
-                      <div key={key} className="bg-bg-secondary rounded-lg border border-bg-border p-4">
-                        <span className="block text-xs uppercase text-text-secondary mb-2 font-bold tracking-widest">{label}</span>
-                        {typeof displayValue === 'string' && displayValue.startsWith('http') && displayValue.includes('supabase.co/storage/v1/object/public/') ? (
-                          <div className="mt-2 bg-black/20 p-2 rounded border border-bg-border inline-block">
-                            {displayValue.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                              <a href={displayValue} target="_blank" rel="noreferrer" className="block">
-                                <img src={displayValue} alt={key} className="max-h-48 rounded object-contain" />
-                              </a>
-                            ) : (
-                              <a href={displayValue} target="_blank" rel="noreferrer" className="text-accent-blue hover:underline text-sm break-all">
-                                View Uploaded Document
-                              </a>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-base text-white break-words">{displayValue}</span>
-                        )}
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-bg-border bg-bg-secondary">
-              <div className="flex justify-between items-center text-sm">
-                <div className="text-text-secondary">
-                  Status: <Badge variant={
-                    selectedSub.status === 'approved' ? 'green' :
-                      selectedSub.status === 'rejected' ? 'red' :
-                        selectedSub.status === 'submitted' ? 'blue' : 'yellow'
-                  }>{selectedSub.status === 'reverted' ? 'Reverted' : selectedSub.status}</Badge>
-                </div>
-                {selectedSub.admin_notes && (
-                  <div className="text-text-muted italic max-w-sm truncate">
-                    Note: {selectedSub.admin_notes}
-                  </div>
-                )}
-              </div>
-            </div>
-          </Card>
-        </div>
+        <ViewFormModal
+          submission={selectedSub}
+          onClose={() => setSelectedSub(null)}
+        />
       )}
     </div>
   );
