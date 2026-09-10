@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { FileText, CheckCircle, XCircle, Clock, Loader2, X, Users, PhoneCall, Activity, Flame, PhoneOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Clock, Loader2, X, Users, PhoneCall, Activity, Flame, PhoneOff, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
@@ -411,35 +411,102 @@ export default function TeamLeadDashboard() {
         </div>
       </div>
 
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-bold text-white">Forms Available for Lead Analysis</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from(new Set(submissions.filter(s => s.form_template_id).map(s => s.form_template_id))).map(templateId => {
-            const templateSubs = submissions.filter(s => s.form_template_id === templateId);
-            const tmpl = Array.isArray(templateSubs[0]?.form_templates) ? templateSubs[0]?.form_templates[0] : templateSubs[0]?.form_templates;
-            const templateName = tmpl?.name || 'Unknown Form';
-            return (
-              <div key={templateId as string} className="bg-bg-primary border border-bg-border rounded-xl p-5 hover:border-accent-blue/50 transition-colors">
-                <h4 className="font-bold text-white text-lg mb-1">{templateName}</h4>
-                <p className="text-sm text-text-secondary mb-4">{templateSubs.length} entries available</p>
-                <Link to={`/teamlead/analyze/${templateId}`}>
-                  <Button variant="outline" className="w-full text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10">
-                    <Activity className="w-4 h-4 mr-2" /> Analyze Leads & Assign
-                  </Button>
-                </Link>
+      {/* Forms & Assigned Leads Analysis (Side by Side) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Card: Forms Available for Lead Analysis (Unassigned Leads) */}
+        <Card className="p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-accent-blue" />
+                  Forms Available for Lead Analysis
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">Analyze and assign unassigned leads</p>
               </div>
-            );
-          })}
-          {submissions.length === 0 && (
-            <div className="col-span-full py-8 text-center text-text-muted italic border-2 border-dashed border-bg-border rounded-xl">
-              No forms have been filled by your surveyors yet.
+              <Badge variant="blue">
+                {submissions.filter(s => !s.telecaller_id).length} Unassigned
+              </Badge>
             </div>
-          )}
-        </div>
-      </Card>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Array.from(new Set(submissions.filter(s => s.form_template_id).map(s => s.form_template_id))).map(templateId => {
+                const templateSubs = submissions.filter(s => s.form_template_id === templateId);
+                const unassignedSubs = templateSubs.filter(s => !s.telecaller_id);
+                const tmpl = Array.isArray(templateSubs[0]?.form_templates) ? templateSubs[0]?.form_templates[0] : templateSubs[0]?.form_templates;
+                const templateName = tmpl?.name || 'Unknown Form';
+                return (
+                  <div key={templateId as string} className="bg-bg-primary border border-bg-border rounded-xl p-5 hover:border-accent-blue/50 transition-colors flex flex-col justify-between">
+                    <div>
+                      <h4 className="font-bold text-white text-base mb-1">{templateName}</h4>
+                      <p className="text-xs text-text-secondary mb-4">
+                        <span className="text-accent-blue font-semibold">{unassignedSubs.length}</span> unassigned entries
+                      </p>
+                    </div>
+                    <Link to={`/teamlead/analyze/${templateId}`}>
+                      <Button variant="outline" className="w-full text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10 text-xs py-2">
+                        <Activity className="w-4 h-4 mr-1.5" /> Analyze Leads & Assign
+                      </Button>
+                    </Link>
+                  </div>
+                );
+              })}
+              {submissions.length === 0 && (
+                <div className="col-span-full py-8 text-center text-text-muted italic border-2 border-dashed border-bg-border rounded-xl text-xs">
+                  No forms have been filled by your surveyors yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        {/* Right Card: Assigned Leads Custom Analysis */}
+        <Card className="p-6 flex flex-col justify-between border-accent-blue/20 shadow-[0_0_15px_rgba(79,110,247,0.05)]">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Users className="w-5 h-5 text-accent-green" />
+                  Assigned Leads Custom Analysis
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">Filter by questions, view telecallers & reassign</p>
+              </div>
+              <Badge variant="green">
+                {submissions.filter(s => s.telecaller_id).length} Assigned
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Array.from(new Set(submissions.filter(s => s.form_template_id).map(s => s.form_template_id))).map(templateId => {
+                const templateSubs = submissions.filter(s => s.form_template_id === templateId);
+                const assignedSubs = templateSubs.filter(s => s.telecaller_id);
+                const tmpl = Array.isArray(templateSubs[0]?.form_templates) ? templateSubs[0]?.form_templates[0] : templateSubs[0]?.form_templates;
+                const templateName = tmpl?.name || 'Unknown Form';
+                return (
+                  <div key={templateId as string} className="bg-bg-primary border border-bg-border rounded-xl p-5 hover:border-accent-green/50 transition-colors flex flex-col justify-between">
+                    <div>
+                      <h4 className="font-bold text-white text-base mb-1">{templateName}</h4>
+                      <p className="text-xs text-text-secondary mb-4">
+                        <span className="text-accent-green font-semibold">{assignedSubs.length}</span> leads assigned
+                      </p>
+                    </div>
+                    <Link to={`/teamlead/assigned-analysis/${templateId}`}>
+                      <Button className="w-full bg-accent-blue/15 hover:bg-accent-blue/25 text-accent-blue border border-accent-blue/30 text-xs py-2">
+                        <ArrowRightLeft className="w-4 h-4 mr-1.5" /> Custom Assigned Leads
+                      </Button>
+                    </Link>
+                  </div>
+                );
+              })}
+              {submissions.length === 0 && (
+                <div className="col-span-full py-8 text-center text-text-muted italic border-2 border-dashed border-bg-border rounded-xl text-xs">
+                  No forms filled yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+      </div>
 
       {/* Global Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">

@@ -17,6 +17,8 @@ const MasterReports = lazy(() => import('./pages/admin/MasterReports'));
 const LeadStatusCount = lazy(() => import('./pages/admin/LeadStatusCount'));
 const CustomTemplateDashboard = lazy(() => import('./pages/admin/CustomTemplateDashboard'));
 const SystemSettings = lazy(() => import('./pages/admin/SystemSettings'));
+const AdminAssignedLeads = lazy(() => import('./pages/admin/AdminAssignedLeads'));
+const AdminAssignedCustomDashboard = lazy(() => import('./pages/admin/AdminAssignedCustomDashboard'));
 
 const SurveyorLayout = lazy(() => import('./pages/surveyor/SurveyorLayout'));
 const SurveyorDashboard = lazy(() => import('./pages/surveyor/SurveyorDashboard'));
@@ -27,6 +29,7 @@ const SharedDashboardLayout = lazy(() => import('./components/layout/SharedDashb
 const CounterDashboard = lazy(() => import('./pages/counter/CounterDashboard'));
 const TeamLeadDashboard = lazy(() => import('./pages/teamlead/TeamLeadDashboard'));
 const TLCustomTemplateDashboard = lazy(() => import('./pages/teamlead/TLCustomTemplateDashboard'));
+const TLAssignedCustomTemplateDashboard = lazy(() => import('./pages/teamlead/TLAssignedCustomTemplateDashboard'));
 const TelecallerDashboard = lazy(() => import('./pages/telecaller/TelecallerDashboard'));
 const TelecallerLeadsDashboard = lazy(() => import('./pages/teamlead/TelecallerLeadsDashboard'));
 const FileHandlerDashboard = lazy(() => import('./pages/filehandler/FileHandlerDashboard'));
@@ -102,6 +105,7 @@ function App() {
           <Route path="reports" element={<MasterReports />} />
           <Route path="lead-status" element={<LeadStatusCount />} />
           <Route path="settings" element={<SystemSettings />} />
+          <Route path="assigned-leads" element={<AdminAssignedLeads />} />
         </Route>
         
         {/* Full screen Admin Routes */}
@@ -128,6 +132,11 @@ function App() {
         <Route path="/admin/reports/custom-file/:templateId" element={
           <AdminRoute>
             <CustomFileTemplateDashboard />
+          </AdminRoute>
+        } />
+        <Route path="/admin/assigned-leads/:templateId" element={
+          <AdminRoute>
+            <AdminAssignedCustomDashboard />
           </AdminRoute>
         } />
         <Route path="/admin/telecaller/:telecallerId" element={
@@ -172,6 +181,11 @@ function App() {
         <Route path="/teamlead/analyze/:templateId" element={
           <TeamLeadRoute>
             <TLCustomTemplateDashboard />
+          </TeamLeadRoute>
+        } />
+        <Route path="/teamlead/assigned-analysis/:templateId" element={
+          <TeamLeadRoute>
+            <TLAssignedCustomTemplateDashboard />
           </TeamLeadRoute>
         } />
         <Route path="/teamlead/telecaller/:telecallerId" element={

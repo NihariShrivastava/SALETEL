@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, IndianRupee, History, Users, FileText, UserCog, Building2, FileBarChart, Settings } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, IndianRupee, History, Users, FileText, UserCog, Building2, FileBarChart, Settings, ArrowRightLeft } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 interface SidebarProps {
@@ -15,6 +15,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navItems: Array<{ to: string, icon: any, label: string, badge?: string | number }> = [
     { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard Overview' },
     { to: '/admin/submissions', icon: History, label: 'Submissions Log' },
+    { to: '/admin/assigned-leads', icon: ArrowRightLeft, label: 'Assigned Leads Analysis' },
     { to: '/admin/domains', icon: Users, label: 'Domain Management' },
     { to: '/admin/file-forms', icon: FileText, label: 'File Form Management' },
     { to: '/admin/counters', icon: CheckSquare, label: 'Counter Management' },
@@ -42,7 +43,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Navigation */}
         <nav className="space-y-1">
           {navItems.map((item) => {
-            const isActive = currentPath === item.to || (item.to === '/admin/submissions' && currentPath === '/admin/submissions');
+            const isActive = currentPath === item.to || 
+              (item.to === '/admin/submissions' && currentPath === '/admin/submissions') ||
+              (item.to === '/admin/assigned-leads' && currentPath.startsWith('/admin/assigned-leads'));
             
             return (
               <NavLink
