@@ -78,26 +78,41 @@ export default function CustomTemplateDashboard() {
       if (templateError) throw templateError;
       setTemplate(templateData);
 
-      // Fetch submissions matching template and surveyor
-      const { data: subData, error: subError } = await supabase
-        .from('submissions')
-        .select(`*, surveyors!surveyor_id(username, full_name)`)
-        .eq('form_template_id', templateId)
-        .in('surveyor_id', activeAssignedUsers)
-        .is('telecaller_id', null)
-        .order('submitted_at', { ascending: false });
+      // Separate Surveyors and Telecallers from fresh assigned users
+      const { data: subordinateProfiles } = await supabase
+        .from('surveyors')
+        .select('id, full_name, username, user_role:user_roles(name)')
+        .in('id', activeAssignedUsers);
 
-      if (subError) throw subError;
-      setSubmissions(subData || []);
-      
-      if (user?.assigned_users && user.assigned_users.length > 0) {
-        const { data: tcData } = await supabase
-          .from('surveyors')
-          .select('id, full_name, username, user_roles(name)')
-          .in('id', user.assigned_users);
-          
-        const telecallers = tcData?.filter(tc => (tc.user_roles as any)?.name?.toLowerCase().includes('telecaller')) || [];
-        setTelecallers(telecallers);
+      const assignedSurveyors: any[] = [];
+      const assignedTelecallers: any[] = [];
+
+      subordinateProfiles?.forEach(u => {
+        const roleName = (Array.isArray(u.user_role) ? u.user_role[0]?.name : (u.user_role as any)?.name)?.toLowerCase() || '';
+        if (roleName.includes('telecaller')) {
+          assignedTelecallers.push(u);
+        } else {
+          assignedSurveyors.push(u);
+        }
+      });
+
+      const assignedSurveyorIds = assignedSurveyors.map(s => s.id);
+      setTelecallers(assignedTelecallers);
+
+      // Fetch unassigned submissions matching template and surveyor
+      if (assignedSurveyorIds.length > 0) {
+        const { data: subData, error: subError } = await supabase
+          .from('submissions')
+          .select(`*, surveyors!surveyor_id(username, full_name)`)
+          .eq('form_template_id', templateId)
+          .in('surveyor_id', assignedSurveyorIds)
+          .is('telecaller_id', null)
+          .order('submitted_at', { ascending: false });
+
+        if (subError) throw subError;
+        setSubmissions(subData || []);
+      } else {
+        setSubmissions([]);
       }
       
     } catch (error: any) {

@@ -111,14 +111,48 @@ export default function SurveyorManagement() {
         assigned_file_template_id: assignedFileTemplateId || null
       };
 
+      let savedUserId = editingId;
       if (editingId) {
         const { error } = await supabase.from('surveyors').update(payload).eq('id', editingId);
         if (error) throw error;
         toast.success('User updated successfully');
       } else {
-        const { error } = await supabase.from('surveyors').insert({ ...payload, created_by: user.id });
+        const { data: insertData, error } = await supabase.from('surveyors').insert({ ...payload, created_by: user.id }).select('id').single();
         if (error) throw error;
+        savedUserId = insertData?.id;
         toast.success('User created successfully');
+      }
+
+      // Synchronize bidirectional assignments between Team Leads and Telecallers
+      const selectedRoleObj = userRoles.find(ur => ur.id === selectedUserRoleId);
+      const roleNameLower = selectedRoleObj?.name?.toLowerCase() || '';
+
+      if (savedUserId && roleNameLower.includes('telecaller')) {
+        // When a Telecaller is saved, sync with all Team Leads' assigned_users
+        for (const tl of teamLeadsList) {
+          const shouldBeAssigned = assignedTeamLeads.includes(tl.id);
+          const currentSubs: string[] = tl.assigned_users || [];
+          const isCurrentlyAssigned = currentSubs.includes(savedUserId);
+
+          if (shouldBeAssigned && !isCurrentlyAssigned) {
+            await supabase.from('surveyors').update({ assigned_users: [...currentSubs, savedUserId] }).eq('id', tl.id);
+          } else if (!shouldBeAssigned && isCurrentlyAssigned) {
+            await supabase.from('surveyors').update({ assigned_users: currentSubs.filter(id => id !== savedUserId) }).eq('id', tl.id);
+          }
+        }
+      } else if (savedUserId && (roleNameLower.includes('team lead') || roleNameLower.includes('teamlead') || roleNameLower.includes('team_lead'))) {
+        // When a Team Lead is saved, sync with Telecallers' team_lead_ids
+        for (const tc of telecallersList) {
+          const shouldBeAssigned = assignedUsers.includes(tc.id);
+          const currentTLs: string[] = tc.team_lead_ids || [];
+          const isCurrentlyAssigned = currentTLs.includes(savedUserId);
+
+          if (shouldBeAssigned && !isCurrentlyAssigned) {
+            await supabase.from('surveyors').update({ team_lead_ids: [...currentTLs, savedUserId] }).eq('id', tc.id);
+          } else if (!shouldBeAssigned && isCurrentlyAssigned) {
+            await supabase.from('surveyors').update({ team_lead_ids: currentTLs.filter(id => id !== savedUserId) }).eq('id', tc.id);
+          }
+        }
       }
       
       resetForm();
@@ -166,7 +200,17 @@ export default function SurveyorManagement() {
     setAssignedDomains(surv.assigned_domains || (surv.domain_id ? [surv.domain_id] : []));
     setAssignedTemplates(surv.assigned_template_ids || []);
     setAssignedCounters(surv.counter_ids || []);
-    setAssignedTeamLeads(surv.team_lead_ids || []);
+
+    // Detect assigned team leads from surv.team_lead_ids or from team leads' assigned_users
+    const detectedTlIds = new Set<string>(surv.team_lead_ids || []);
+    surveyors.forEach(s => {
+      const r = s.user_role?.name?.toLowerCase() || '';
+      if ((r.includes('team lead') || r.includes('teamlead') || r.includes('team_lead')) && s.assigned_users?.includes(surv.id)) {
+        detectedTlIds.add(s.id);
+      }
+    });
+    setAssignedTeamLeads(Array.from(detectedTlIds));
+
     setAssignedTelecallers(surv.telecaller_ids || []);
     setAssignedUsers(surv.assigned_users || []);
     setAssignedFileTemplateId(surv.assigned_file_template_id || '');
@@ -367,6 +411,36 @@ export default function SurveyorManagement() {
                       </div>
 
                     </>
+                  )}
+
+                  {/* Telecaller: Assign Team Lead */}
+                  {isTelecaller && (
+                    <div className="space-y-1.5 relative">
+                      <label className="text-xs uppercase tracking-widest text-text-secondary font-medium">Assign Team Lead</label>
+                      <div className="relative">
+                        <button type="button" onClick={() => toggleDropdown('assignTelecallerTL')} className="w-full bg-bg-primary border border-bg-border rounded-lg px-3 py-2 text-white text-sm flex items-center justify-between">
+                          <span className="truncate">{assignedTeamLeads.length === 0 ? "Select Team Lead..." : `${assignedTeamLeads.length} selected`}</span>
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                        {openDropdown === 'assignTelecallerTL' && (
+                          <div className="absolute top-full mt-1 w-full bg-bg-primary border border-bg-border rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto p-2 space-y-1">
+                            {teamLeadsList.length === 0 && <p className="text-xs text-text-muted p-2">No team leads found.</p>}
+                            {teamLeadsList.map(tl => (
+                              <label key={tl.id} className="flex items-center gap-3 cursor-pointer p-2 hover:bg-bg-secondary rounded">
+                                <input 
+                                  type="checkbox" 
+                                  checked={assignedTeamLeads.includes(tl.id)} 
+                                  onChange={(e) => {
+                                    setAssignedTeamLeads(prev => e.target.checked ? [...prev, tl.id] : prev.filter(id => id !== tl.id));
+                                  }} 
+                                />
+                                <span className="text-sm text-white">{tl.full_name || tl.username}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
 
                   {/* Team Lead: Subordinates */}
@@ -659,9 +733,18 @@ export default function SurveyorManagement() {
                             );
                           }
                           if (rName.includes('telecaller')) {
+                            const currentTlNames = surveyors
+                              .filter(s => {
+                                const r = s.user_role?.name?.toLowerCase() || '';
+                                return (r.includes('team lead') || r.includes('teamlead') || r.includes('team_lead')) &&
+                                       ((s.assigned_users && s.assigned_users.includes(surv.id)) || (surv.team_lead_ids && surv.team_lead_ids.includes(s.id)));
+                              })
+                              .map(tl => tl.full_name || tl.username);
+
                             return (
                               <div className="text-xs text-text-secondary">
                                 <div>Counters: {surv.counter_ids?.length || 0}</div>
+                                <div>Team Leads: {currentTlNames.length > 0 ? currentTlNames.join(', ') : 'None'}</div>
                               </div>
                             );
                           }

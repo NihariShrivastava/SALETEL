@@ -88,15 +88,17 @@ export default function TLAssignedCustomTemplateDashboard() {
 
     setIsLoading(true);
     try {
-      // 1. Refresh profile to ensure assigned_users list is up-to-date
+      // 1. Refresh profile to ensure assigned_users list is up-to-date (lean query)
       const { data: freshTL } = await supabase
         .from('surveyors')
-        .select('*, user_role:user_roles(name)')
+        .select('assigned_users')
         .eq('id', user.id)
         .single();
 
-      if (freshTL && updateUser) {
-        updateUser(freshTL);
+      if (freshTL && updateUser && user) {
+        if (JSON.stringify(user.assigned_users) !== JSON.stringify(freshTL.assigned_users)) {
+          updateUser({ ...user, assigned_users: freshTL.assigned_users });
+        }
       }
 
       const activeAssignedUsers = freshTL?.assigned_users || user.assigned_users || [];
@@ -142,43 +144,105 @@ export default function TLAssignedCustomTemplateDashboard() {
 
       setTemplate(tmpl);
 
-      // 3. Fetch ASSIGNED submissions only (telecaller_id is NOT null)
-      const { data: subData, error: subError } = await supabase
-        .from('submissions')
-        .select(`
-          *,
-          surveyor:surveyors!surveyor_id(id, full_name, username),
-          telecaller:surveyors!telecaller_id(id, full_name, username),
-          form_templates(name, fields)
-        `)
-        .eq('form_template_id', templateId)
-        .in('surveyor_id', activeAssignedUsers)
-        .not('telecaller_id', 'is', null)
-        .order('submitted_at', { ascending: false });
+      // Fetch subordinate profiles to separate Surveyors and Telecallers
+      const { data: subordinateProfiles } = await supabase
+        .from('surveyors')
+        .select('id, full_name, username, user_role:user_roles(name)')
+        .in('id', activeAssignedUsers);
 
-      if (subError) throw subError;
-      const finalSubs = subData || [];
+      const assignedSurveyors: any[] = [];
+      const assignedTelecallers: any[] = [];
+
+      subordinateProfiles?.forEach(u => {
+        const roleName = (Array.isArray(u.user_role) ? u.user_role[0]?.name : (u.user_role as any)?.name)?.toLowerCase() || '';
+        if (roleName.includes('telecaller')) {
+          assignedTelecallers.push(u);
+        } else {
+          assignedSurveyors.push(u);
+        }
+      });
+
+      const assignedSurveyorIds = assignedSurveyors.map(s => s.id);
+      const assignedTelecallerIds = assignedTelecallers.map(t => t.id);
+
+      // 3. Fetch ASSIGNED submissions with lean select (omit duplicate form_templates.fields since tmpl is already loaded)
+      const fetchPromises: Promise<any>[] = [];
+      const selectQuery = `
+        id,
+        form_template_id,
+        surveyor_id,
+        telecaller_id,
+        lead_status,
+        lead_status_updated_at,
+        telecaller_remark,
+        submitted_at,
+        status,
+        data,
+        surveyor:surveyors!surveyor_id(id, full_name, username),
+        telecaller:surveyors!telecaller_id(id, full_name, username),
+        form_templates(name)
+      `;
+
+      if (assignedSurveyorIds.length > 0) {
+        fetchPromises.push(
+          supabase
+            .from('submissions')
+            .select(selectQuery)
+            .eq('form_template_id', templateId)
+            .in('surveyor_id', assignedSurveyorIds)
+            .not('telecaller_id', 'is', null)
+            .order('submitted_at', { ascending: false })
+        );
+      }
+
+      if (assignedTelecallerIds.length > 0) {
+        let tcQuery = supabase
+          .from('submissions')
+          .select(selectQuery)
+          .eq('form_template_id', templateId)
+          .in('telecaller_id', assignedTelecallerIds)
+          .not('telecaller_id', 'is', null);
+
+        // Exclude leads already matched by surveyor_id to prevent querying/transferring duplicate rows
+        if (assignedSurveyorIds.length > 0) {
+          tcQuery = tcQuery.not('surveyor_id', 'in', `(${assignedSurveyorIds.join(',')})`);
+        }
+
+        fetchPromises.push(tcQuery.order('submitted_at', { ascending: false }));
+      }
+
+      const results = await Promise.all(fetchPromises);
+      for (const res of results) {
+        if (res.error) throw res.error;
+      }
+
+      const subsMap = new Map<string, any>();
+      results.forEach(res => {
+        (res.data || []).forEach((sub: any) => {
+          subsMap.set(sub.id, sub);
+        });
+      });
+
+      const finalSubs = Array.from(subsMap.values()).sort(
+        (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime()
+      );
       setSubmissions(finalSubs);
 
-      // 4. Fetch available Telecallers for reassigning
-      const uniqueAssignedTcIds = Array.from(new Set(finalSubs.filter(s => s.telecaller_id).map(s => s.telecaller_id)));
-      const allPotentialTcIds = Array.from(new Set([...activeAssignedUsers, ...uniqueAssignedTcIds]));
-
-      if (allPotentialTcIds.length > 0) {
-        const { data: potentialTcs } = await supabase
-          .from('surveyors')
-          .select('id, full_name, username, user_role:user_roles(name)')
-          .in('id', allPotentialTcIds);
-
-        if (potentialTcs) {
-          const tcs = potentialTcs.filter(u => {
-            const roleName = Array.isArray(u.user_role) ? u.user_role[0]?.name : (u.user_role as any)?.name;
-            return roleName?.toLowerCase().includes('telecaller') || uniqueAssignedTcIds.includes(u.id);
+      // 4. Resolve available Telecallers for reassigning in memory without extra database call
+      const uniqueTcsMap = new Map<string, any>();
+      assignedTelecallers.forEach(tc => uniqueTcsMap.set(tc.id, tc));
+      finalSubs.forEach(sub => {
+        if (sub.telecaller && sub.telecaller.id && !uniqueTcsMap.has(sub.telecaller.id)) {
+          uniqueTcsMap.set(sub.telecaller.id, {
+            id: sub.telecaller.id,
+            full_name: sub.telecaller.full_name,
+            username: sub.telecaller.username
           });
-          const uniqueTcs = Array.from(new Map(tcs.map(item => [item.id, item])).values());
-          setTeamTelecallers(uniqueTcs);
         }
-      }
+      });
+
+      const uniqueTcs = Array.from(uniqueTcsMap.values());
+      setTeamTelecallers(uniqueTcs);
 
     } catch (err: any) {
       console.error('Failed to load assigned leads custom data:', err);
