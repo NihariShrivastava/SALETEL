@@ -185,18 +185,20 @@ export default function TLAssignedCustomTemplateDashboard() {
 
       if (assignedSurveyorIds.length > 0) {
         fetchPromises.push(
-          supabase
-            .from('submissions')
-            .select(selectQuery)
-            .eq('form_template_id', templateId)
-            .in('surveyor_id', assignedSurveyorIds)
-            .not('telecaller_id', 'is', null)
-            .order('submitted_at', { ascending: false })
+          Promise.resolve(
+            supabase
+              .from('submissions')
+              .select(selectQuery)
+              .eq('form_template_id', templateId)
+              .in('surveyor_id', assignedSurveyorIds)
+              .not('telecaller_id', 'is', null)
+              .order('submitted_at', { ascending: false })
+          )
         );
       }
 
       if (assignedTelecallerIds.length > 0) {
-        let tcQuery = supabase
+        let tcQuery: any = supabase
           .from('submissions')
           .select(selectQuery)
           .eq('form_template_id', templateId)
@@ -208,7 +210,7 @@ export default function TLAssignedCustomTemplateDashboard() {
           tcQuery = tcQuery.not('surveyor_id', 'in', `(${assignedSurveyorIds.join(',')})`);
         }
 
-        fetchPromises.push(tcQuery.order('submitted_at', { ascending: false }));
+        fetchPromises.push(Promise.resolve(tcQuery.order('submitted_at', { ascending: false })));
       }
 
       const results = await Promise.all(fetchPromises);

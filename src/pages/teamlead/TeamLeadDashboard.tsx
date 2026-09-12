@@ -182,16 +182,18 @@ export default function TeamLeadDashboard() {
 
       if (assignedSurveyorIds.length > 0) {
         fetchPromises.push(
-          supabase
-            .from('submissions')
-            .select(selectQuery)
-            .in('surveyor_id', assignedSurveyorIds)
-            .order('submitted_at', { ascending: false })
+          Promise.resolve(
+            supabase
+              .from('submissions')
+              .select(selectQuery)
+              .in('surveyor_id', assignedSurveyorIds)
+              .order('submitted_at', { ascending: false })
+          )
         );
       }
 
       if (assignedTelecallerIds.length > 0) {
-        let tcQuery = supabase
+        let tcQuery: any = supabase
           .from('submissions')
           .select(selectQuery)
           .in('telecaller_id', assignedTelecallerIds);
@@ -201,7 +203,7 @@ export default function TeamLeadDashboard() {
           tcQuery = tcQuery.not('surveyor_id', 'in', `(${assignedSurveyorIds.join(',')})`);
         }
 
-        fetchPromises.push(tcQuery.order('submitted_at', { ascending: false }));
+        fetchPromises.push(Promise.resolve(tcQuery.order('submitted_at', { ascending: false })));
       }
 
       const results = await Promise.all(fetchPromises);
