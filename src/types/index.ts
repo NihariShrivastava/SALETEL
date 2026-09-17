@@ -114,6 +114,11 @@ export interface Submission {
   lead_status?: string;
   telecaller_remark?: string | null;
   lead_status_updated_at?: string | null;
+  surveyor?: { id?: string; full_name?: string; username?: string };
+  telecaller?: { id?: string; full_name?: string; username?: string };
+  tl_name?: string;
+  telecaller_name?: string;
+  form_templates?: { name?: string; fields?: any[] } | { name?: string; fields?: any[] }[];
 }
 
 export interface FileFormTemplate {
@@ -134,7 +139,7 @@ export interface FileSubmission {
   file_handler_id: string;
   original_lead_id: string | null;
   data: Record<string, any>;
-  status: 'submitted' | 'closed' | 'cleared';
+  status: 'submitted' | 'closed' | 'cleared' | 'deleted';
   submitted_at: string;
   updated_at: string;
   // joined relations

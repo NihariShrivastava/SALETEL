@@ -55,8 +55,10 @@ interface FileHandlerSummary {
   id: string;
   name: string;
   assignedLeads: number;
+  pendingLeads?: number;
   totalSubmitted: number;
   totalClosed: number;
+  totalDeleted?: number;
   linkedFilesCount?: number;
 }
 
@@ -254,38 +256,57 @@ export default function ManagerDashboard() {
       setTeamLeadData(Object.values(tlReportMap));
 
       // 6. Compute File Handler Performance Report data
-      const fhReportMap: Record<string, FileHandlerSummary> = {};
-      fileHandlers.forEach(fh => {
-        fhReportMap[fh.id] = {
-          id: fh.id,
-          name: fh.full_name || fh.username,
-          assignedLeads: 0,
-          totalSubmitted: 0,
-          totalClosed: 0,
-          linkedFilesCount: 0
-        };
-      });
-
+      let fsData: any[] = [];
       if (fhIds.length > 0) {
-        const { data: fsData } = await supabase
+        const { data } = await supabase
           .from('file_submissions')
           .select('id, file_handler_id, original_lead_id, status')
           .in('file_handler_id', fhIds);
-
-        if (fsData) {
-          fsData.forEach(fs => {
-            if (fhReportMap[fs.file_handler_id]) {
-              fhReportMap[fs.file_handler_id].totalSubmitted += 1;
-              if (fs.status === 'closed' || fs.status === 'cleared') {
-                fhReportMap[fs.file_handler_id].totalClosed += 1;
-              }
-              if (fs.original_lead_id) {
-                fhReportMap[fs.file_handler_id].linkedFilesCount = (fhReportMap[fs.file_handler_id].linkedFilesCount || 0) + 1;
-              }
-            }
-          });
-        }
+        fsData = data || [];
       }
+
+      const fhReportMap: Record<string, FileHandlerSummary> = {};
+      fileHandlers.forEach(fh => {
+        const myTlIds = (fh as any).team_lead_ids || [];
+        let fhSurveyorIds: string[] = [];
+        teamLeads.filter(tl => myTlIds.includes(tl.id) || (tl.assigned_users && tl.assigned_users.includes(fh.id))).forEach(tl => {
+          fhSurveyorIds.push(tl.id);
+          if (tl.assigned_users && Array.isArray(tl.assigned_users)) {
+            fhSurveyorIds = [...fhSurveyorIds, ...tl.assigned_users];
+          }
+        });
+        teamLeads.forEach(tl => {
+          if (Array.isArray(tl.assigned_users) && tl.assigned_users.includes(fh.id)) {
+            fhSurveyorIds.push(tl.id);
+            if (Array.isArray(tl.assigned_users)) {
+              fhSurveyorIds = [...fhSurveyorIds, ...tl.assigned_users];
+            }
+          }
+        });
+        fhSurveyorIds = Array.from(new Set(fhSurveyorIds));
+
+        const closedLeads = subsData.filter(s => s.lead_status === 'closed' && fhSurveyorIds.includes(s.surveyor_id));
+
+        const myFiles = fsData.filter(fs => fs.file_handler_id === fh.id);
+        const totalSubmitted = myFiles.filter(fs => fs.status === 'submitted').length;
+        const totalClosed = myFiles.filter(fs => fs.status === 'closed' || fs.status === 'cleared').length;
+        const totalDeleted = myFiles.filter(fs => fs.status === 'deleted').length;
+
+        const activeLeadIds = new Set(myFiles.filter(fs => fs.status !== 'deleted' && fs.original_lead_id).map(fs => fs.original_lead_id));
+        const pendingLeads = closedLeads.filter(l => !activeLeadIds.has(l.id)).length;
+
+        const assignedLeads = pendingLeads + totalSubmitted + totalClosed + totalDeleted;
+
+        fhReportMap[fh.id] = {
+          id: fh.id,
+          name: fh.full_name || fh.username,
+          assignedLeads,
+          pendingLeads,
+          totalSubmitted,
+          totalClosed,
+          totalDeleted
+        };
+      });
 
       setFileHandlerData(Object.values(fhReportMap));
 
@@ -474,7 +495,7 @@ export default function ManagerDashboard() {
               <div className="flex items-center gap-1.5 mb-0.5">
                 <FileCheck className="w-4 h-4 text-accent-yellow" />
                 <span className="text-xl font-bold text-white">
-                  {fileHandlerData.reduce((acc, curr) => acc + curr.totalSubmitted, 0)}
+                  {fileHandlerData.reduce((acc, curr) => acc + (curr.totalSubmitted + curr.totalClosed + (curr.totalDeleted || 0)), 0)}
                 </span>
               </div>
               <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Files Handled</span>
@@ -992,11 +1013,11 @@ export default function ManagerDashboard() {
                   <th className="py-3 px-4 font-semibold text-center text-orange-400">Leads Pending</th>
                   <th className="py-3 px-4 font-semibold text-center text-white">Open File</th>
                   <th className="py-3 px-4 font-semibold text-center text-pink-500">Cleared Files</th>
+                  <th className="py-3 px-4 font-semibold text-center text-red-500">Deleted by FH</th>
                 </tr>
               </thead>
               <tbody>
                 {fileHandlerData.length > 0 ? fileHandlerData.map((fh, i) => {
-                  const pendingCount = Math.max(0, fh.assignedLeads - (fh.linkedFilesCount || 0));
                   return (
                     <tr key={fh.id || i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors">
                       <td className="py-3 px-4 text-white font-medium flex items-center gap-2">
@@ -1004,13 +1025,14 @@ export default function ManagerDashboard() {
                         {fh.name}
                       </td>
                       <td className="py-3 px-4 text-center text-accent-blue font-bold">{fh.assignedLeads}</td>
-                      <td className="py-3 px-4 text-center text-orange-400 font-bold">{pendingCount}</td>
+                      <td className="py-3 px-4 text-center text-orange-400 font-bold">{fh.pendingLeads ?? 0}</td>
                       <td className="py-3 px-4 text-center text-white font-bold">{fh.totalSubmitted.toLocaleString()}</td>
                       <td className="py-3 px-4 text-center text-pink-500 font-bold">{fh.totalClosed.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-center text-red-500 font-bold">{(fh.totalDeleted ?? 0).toLocaleString()}</td>
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan={5} className="py-12 text-center text-text-muted italic">No assigned file handlers or files found.</td></tr>
+                  <tr><td colSpan={6} className="py-12 text-center text-text-muted italic">No assigned file handlers or files found.</td></tr>
                 )}
               </tbody>
             </table>

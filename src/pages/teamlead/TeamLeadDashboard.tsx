@@ -3,13 +3,33 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { FileText, CheckCircle, XCircle, Clock, Loader2, X, Users, PhoneCall, Activity, Flame, PhoneOff, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Clock, Loader2, X, Users, PhoneCall, Activity, Flame, PhoneOff, ChevronLeft, ChevronRight, ArrowRightLeft, Eye, FileCheck, FolderOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import type { FieldConfig } from '../../types';
 import ViewFormModal from '../../components/common/ViewFormModal';
+import ViewFileSubmissionModal from '../../components/common/ViewFileSubmissionModal';
+
+const findValueByLabelRegex = (lead: any, regex: RegExp) => {
+  if (!lead || !lead.data) return '-';
+  
+  const tmpl = Array.isArray(lead.form_templates) ? lead.form_templates[0] : lead.form_templates;
+  if (tmpl && Array.isArray(tmpl.fields)) {
+    const field = tmpl.fields.find((f: any) => regex.test(f.label));
+    if (field && lead.data[field.id]) {
+      return lead.data[field.id];
+    }
+  }
+  
+  if (typeof lead.data === 'object') {
+    const key = Object.keys(lead.data).find(k => regex.test(k));
+    if (key && lead.data[key]) return lead.data[key];
+  }
+  
+  return '-';
+};
 
 const getStatusBadgeVariant = (status?: string) => {
   switch (status?.toLowerCase()) {
@@ -22,6 +42,7 @@ const getStatusBadgeVariant = (status?: string) => {
     case 'wrong_number': return 'purple';
     case 'skipped': return 'purple';
     case 'closed': return 'green';
+    case 'cleared': return 'pink';
     case 'deleted': return 'red';
     default: return 'blue';
   }
@@ -46,6 +67,14 @@ export default function TeamLeadDashboard() {
   const [reassignTo, setReassignTo] = useState<string>('');
   const [isReassigning, setIsReassigning] = useState(false);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
+
+  // File Submissions states
+  const [fileSubmissions, setFileSubmissions] = useState<any[]>([]);
+  const [selectedFileSubmission, setSelectedFileSubmission] = useState<any | null>(null);
+
+  useEffect(() => {
+    setSlidePage(1);
+  }, [activeSlide, selectedSurveyor, selectedStatus]);
 
   const handleViewForm = async (lead: any) => {
     if (!lead) return;
@@ -275,6 +304,112 @@ export default function TeamLeadDashboard() {
         surveyors: assignedSurveyorIds.length,
         telecallers: uniqueTcs.length
       });
+
+      // Fetch File Submissions for this Team Lead
+      try {
+        const { data: assignedFHs } = await supabase
+          .from('surveyors')
+          .select('id, full_name, username')
+          .contains('team_lead_ids', [user.id]);
+        
+        const fhIds = assignedFHs?.map(f => f.id) || [];
+        const leadIds = finalData.map(s => s.id);
+
+        const fsQuerySelect = `
+          id,
+          file_handler_id,
+          original_lead_id,
+          status,
+          data,
+          submitted_at,
+          updated_at,
+          file_handler:surveyors!file_handler_id(id, full_name, username),
+          file_form_template:file_form_templates(id, name, fields),
+          original_lead:submissions!original_lead_id(
+            id,
+            data,
+            surveyor_id,
+            telecaller_id,
+            surveyor:surveyors!surveyor_id(id, full_name, username),
+            telecaller:surveyors!telecaller_id(id, full_name, username),
+            form_templates(name, fields)
+          )
+        `;
+
+        const fsPromises: Promise<any>[] = [];
+        if (fhIds.length > 0) {
+          fsPromises.push(
+            Promise.resolve(
+              supabase
+                .from('file_submissions')
+                .select(fsQuerySelect)
+                .in('file_handler_id', fhIds)
+                .order('updated_at', { ascending: false })
+            )
+          );
+        }
+        if (leadIds.length > 0) {
+          fsPromises.push(
+            Promise.resolve(
+              supabase
+                .from('file_submissions')
+                .select(fsQuerySelect)
+                .in('original_lead_id', leadIds)
+                .order('updated_at', { ascending: false })
+            )
+          );
+        }
+
+        const fsResults = await Promise.all(fsPromises);
+        const fsMap = new Map<string, any>();
+        fsResults.forEach(res => {
+          (res.data || []).forEach((item: any) => {
+            fsMap.set(item.id, item);
+          });
+        });
+
+        const combinedFiles = Array.from(fsMap.values()).sort(
+          (a, b) => new Date(b.updated_at || b.submitted_at).getTime() - new Date(a.updated_at || a.submitted_at).getTime()
+        );
+
+        // Fetch caller logs for these file submissions' original leads
+        const fileLeadIds = combinedFiles.map(f => f.original_lead_id).filter(Boolean);
+        if (fileLeadIds.length > 0) {
+          const { data: callLogs } = await supabase
+            .from('lead_call_logs')
+            .select('submission_id, created_at, telecaller:surveyors!telecaller_id(id, full_name, username)')
+            .in('submission_id', fileLeadIds)
+            .order('created_at', { ascending: false });
+
+          if (callLogs && callLogs.length > 0) {
+            const callersByLead = new Map<string, string[]>();
+            callLogs.forEach((log: any) => {
+              if (log.telecaller) {
+                const name = log.telecaller.full_name || log.telecaller.username;
+                if (name) {
+                  const existing = callersByLead.get(log.submission_id) || [];
+                  if (!existing.includes(name)) {
+                    existing.push(name);
+                    callersByLead.set(log.submission_id, existing);
+                  }
+                }
+              }
+            });
+
+            combinedFiles.forEach(f => {
+              if (f.original_lead_id && callersByLead.has(f.original_lead_id)) {
+                const names = callersByLead.get(f.original_lead_id)!.join(', ');
+                f.telecaller_name = names;
+                if (f.original_lead) f.original_lead.telecaller_name = names;
+              }
+            });
+          }
+        }
+
+        setFileSubmissions(combinedFiles);
+      } catch (fErr) {
+        console.error('Failed to fetch file submissions for team lead:', fErr);
+      }
     } catch (err) {
       console.error('Failed to fetch submissions', err);
       toast.error('Failed to load submissions.');
@@ -365,6 +500,18 @@ export default function TeamLeadDashboard() {
   const closedLeads = filteredSubmissions.filter(s => s.lead_status === 'closed');
   const deletedLeads = filteredSubmissions.filter(s => s.lead_status === 'deleted');
 
+  const openedFiles = fileSubmissions
+    .filter(f => f.status === 'submitted')
+    .filter(f => selectedSurveyor === 'all' || f.original_lead?.surveyor_id === selectedSurveyor);
+
+  const clearedFiles = fileSubmissions
+    .filter(f => f.status === 'cleared' || f.status === 'closed')
+    .filter(f => selectedSurveyor === 'all' || f.original_lead?.surveyor_id === selectedSurveyor);
+
+  const deletedFiles = fileSubmissions
+    .filter(f => f.status === 'deleted')
+    .filter(f => selectedSurveyor === 'all' || f.original_lead?.surveyor_id === selectedSurveyor);
+
   const getPaginated = (arr: any[]) => arr.slice((slidePage - 1) * itemsPerPage, slidePage * itemsPerPage);
 
   const paginatedTelecallerData = getPaginated(telecallerData);
@@ -374,6 +521,9 @@ export default function TeamLeadDashboard() {
   const paginatedWrongNumberLeads = getPaginated(wrongNumberLeads);
   const paginatedClosedLeads = getPaginated(closedLeads);
   const paginatedDeletedLeads = getPaginated(deletedLeads);
+  const paginatedOpenedFiles = getPaginated(openedFiles);
+  const paginatedClearedFiles = getPaginated(clearedFiles);
+  const paginatedDeletedFiles = getPaginated(deletedFiles);
 
   const slides = [
     { id: 'performance', title: 'Telecaller Performance Report' },
@@ -382,7 +532,10 @@ export default function TeamLeadDashboard() {
     { id: 'reverted', title: 'Reverted by TC' },
     { id: 'wrong_number', title: 'Wrong Numbers' },
     { id: 'closed_leads', title: 'Closed Leads' },
-    { id: 'deleted_leads', title: 'Deleted Leads' }
+    { id: 'deleted_leads', title: 'Deleted Leads' },
+    { id: 'opened_files', title: 'Opened Files (File Handler)' },
+    { id: 'cleared_files', title: 'Cleared Files (File Handler)' },
+    { id: 'deleted_files', title: 'Deleted Files (File Handler)' }
   ];
 
   const nextSlide = () => setActiveSlide(prev => (prev + 1) % slides.length);
@@ -486,6 +639,20 @@ export default function TeamLeadDashboard() {
                 <div className="text-xl font-bold text-white">{submissions.length}</div>
               </div>
               <div className="text-[10px] uppercase text-text-muted font-bold tracking-widest text-center">Forms Filled</div>
+            </div>
+            <div className="bg-bg-primary border border-bg-border rounded-lg p-4 flex flex-col items-center min-w-[100px]">
+              <div className="flex items-center gap-2 mb-1">
+                <FileCheck className="w-4 h-4 text-accent-blue" />
+                <div className="text-xl font-bold text-accent-blue">{openedFiles.length}</div>
+              </div>
+              <div className="text-[10px] uppercase text-text-muted font-bold tracking-widest text-center">Open Files</div>
+            </div>
+            <div className="bg-bg-primary border border-bg-border rounded-lg p-4 flex flex-col items-center min-w-[100px]">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle className="w-4 h-4 text-pink-500" />
+                <div className="text-xl font-bold text-pink-500">{clearedFiles.length}</div>
+              </div>
+              <div className="text-[10px] uppercase text-text-muted font-bold tracking-widest text-center">Cleared Files</div>
             </div>
           </div>
         </div>
@@ -628,14 +795,17 @@ export default function TeamLeadDashboard() {
       <Card className="p-0 overflow-hidden border-accent-blue/30 shadow-[0_0_15px_rgba(79,110,247,0.1)]">
         <div className="flex items-center justify-between p-4 md:p-6 border-b border-bg-border bg-bg-secondary">
           <div className="flex items-center gap-4">
-            <h3 className="text-lg font-bold text-white">{slides[activeSlide].title}</h3>
-            {activeSlide === 0 && <Badge variant="blue">{telecallerData.length} Active Telecallers</Badge>}
-            {activeSlide === 1 && <Badge variant="blue">{assignedLeadsLogs.length} Leads</Badge>}
-            {activeSlide === 2 && <Badge variant="red">{immediateLeads.length} Leads</Badge>}
-            {activeSlide === 3 && <Badge variant="purple">{revertedLeads.length} Leads</Badge>}
-            {activeSlide === 4 && <Badge variant="gray">{wrongNumberLeads.length} Leads</Badge>}
-            {activeSlide === 5 && <Badge variant="green">{closedLeads.length} Leads</Badge>}
-            {activeSlide === 6 && <Badge variant="red">{deletedLeads.length} Leads</Badge>}
+            <h3 className="text-lg font-bold text-white">{slides[activeSlide]?.title}</h3>
+            {slides[activeSlide]?.id === 'performance' && <Badge variant="blue">{telecallerData.length} Active Telecallers</Badge>}
+            {slides[activeSlide]?.id === 'assigned' && <Badge variant="blue">{assignedLeadsLogs.length} Leads</Badge>}
+            {slides[activeSlide]?.id === 'immediate' && <Badge variant="red">{immediateLeads.length} Leads</Badge>}
+            {slides[activeSlide]?.id === 'reverted' && <Badge variant="purple">{revertedLeads.length} Leads</Badge>}
+            {slides[activeSlide]?.id === 'wrong_number' && <Badge variant="gray">{wrongNumberLeads.length} Leads</Badge>}
+            {slides[activeSlide]?.id === 'closed_leads' && <Badge variant="green">{closedLeads.length} Leads</Badge>}
+            {slides[activeSlide]?.id === 'deleted_leads' && <Badge variant="red">{deletedLeads.length} Leads</Badge>}
+            {slides[activeSlide]?.id === 'opened_files' && <Badge variant="blue">{openedFiles.length} Files</Badge>}
+            {slides[activeSlide]?.id === 'cleared_files' && <Badge variant="pink">{clearedFiles.length} Files</Badge>}
+            {slides[activeSlide]?.id === 'deleted_files' && <Badge variant="red">{deletedFiles.length} Files</Badge>}
           </div>
           <div className="flex items-center gap-2">
             {activeSlide === 1 && selectedLeads.length > 0 && (
@@ -993,18 +1163,224 @@ export default function TeamLeadDashboard() {
               </table>
             </div>
           )}
+          {slides[activeSlide]?.id === 'opened_files' && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm min-w-[700px]">
+                <thead>
+                  <tr className="bg-bg-primary border-b border-bg-border text-text-muted text-[10px] uppercase tracking-widest">
+                    <th className="py-3 px-4 font-semibold">File Template</th>
+                    <th className="py-3 px-4 font-semibold">File Handler</th>
+                    <th className="py-3 px-4 font-semibold">Customer / Lead</th>
+                    <th className="py-3 px-4 font-semibold">Surveyor</th>
+                    <th className="py-3 px-4 font-semibold">Telecaller</th>
+                    <th className="py-3 px-4 font-semibold">Status</th>
+                    <th className="py-3 px-4 font-semibold">Last Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedOpenedFiles.map(file => {
+                    const customerName = findValueByLabelRegex(file.original_lead, /name|customer/i);
+                    return (
+                      <tr key={file.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
+                        <td className="py-3 px-4 text-white font-medium">
+                          {file.file_form_template?.name || 'File Form'}
+                        </td>
+                        <td className="py-3 px-4 text-accent-green font-medium">
+                          {file.file_handler?.full_name || file.file_handler?.username || 'File Handler'}
+                        </td>
+                        <td className="py-3 px-4 text-white">
+                          <div>
+                            <span className="font-medium">{customerName !== '-' ? customerName : (file.original_lead_id ? file.original_lead_id.slice(0, 8) + '...' : 'Independent')}</span>
+                            {file.original_lead_id && (
+                              <span className="text-[10px] text-text-muted block font-mono">ID: {file.original_lead_id.slice(0, 8)}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary">
+                          {file.original_lead?.surveyor?.full_name || file.original_lead?.surveyor?.username || '-'}
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary">
+                          {file.telecaller_name || file.original_lead?.telecaller_name || file.original_lead?.telecaller?.full_name || file.original_lead?.telecaller?.username || '-'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="blue">OPEN</Badge>
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary text-xs">
+                          {new Date(file.updated_at || file.submitted_at).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {openedFiles.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-text-muted italic">
+                        No opened files from file handler.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {slides[activeSlide]?.id === 'cleared_files' && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm min-w-[700px]">
+                <thead>
+                  <tr className="bg-bg-primary border-b border-bg-border text-text-muted text-[10px] uppercase tracking-widest">
+                    <th className="py-3 px-4 font-semibold">File Template</th>
+                    <th className="py-3 px-4 font-semibold">File Handler</th>
+                    <th className="py-3 px-4 font-semibold">Customer / Lead</th>
+                    <th className="py-3 px-4 font-semibold">Surveyor</th>
+                    <th className="py-3 px-4 font-semibold">Telecaller</th>
+                    <th className="py-3 px-4 font-semibold">Status</th>
+                    <th className="py-3 px-4 font-semibold">Cleared Date</th>
+                    <th className="py-3 px-4 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedClearedFiles.map(file => {
+                    const customerName = findValueByLabelRegex(file.original_lead, /name|customer/i);
+                    return (
+                      <tr key={file.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
+                        <td className="py-3 px-4 text-white font-medium">
+                          {file.file_form_template?.name || 'File Form'}
+                        </td>
+                        <td className="py-3 px-4 text-accent-green font-medium">
+                          {file.file_handler?.full_name || file.file_handler?.username || 'File Handler'}
+                        </td>
+                        <td className="py-3 px-4 text-white">
+                          <div>
+                            <span className="font-medium">{customerName !== '-' ? customerName : (file.original_lead_id ? file.original_lead_id.slice(0, 8) + '...' : 'Independent')}</span>
+                            {file.original_lead_id && (
+                              <span className="text-[10px] text-text-muted block font-mono">ID: {file.original_lead_id.slice(0, 8)}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary">
+                          {file.original_lead?.surveyor?.full_name || file.original_lead?.surveyor?.username || '-'}
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary">
+                          {file.telecaller_name || file.original_lead?.telecaller_name || file.original_lead?.telecaller?.full_name || file.original_lead?.telecaller?.username || '-'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="pink">CLEARED</Badge>
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary text-xs">
+                          {new Date(file.updated_at || file.submitted_at).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => setSelectedFileSubmission(file)}
+                            className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10 text-xs py-1"
+                          >
+                            <Eye className="w-3.5 h-3.5 mr-1 inline" />
+                            View Form
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {clearedFiles.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-text-muted italic">
+                        No cleared files from file handler.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {slides[activeSlide]?.id === 'deleted_files' && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm min-w-[700px]">
+                <thead>
+                  <tr className="bg-bg-primary border-b border-bg-border text-text-muted text-[10px] uppercase tracking-widest">
+                    <th className="py-3 px-4 font-semibold">File Template</th>
+                    <th className="py-3 px-4 font-semibold">File Handler</th>
+                    <th className="py-3 px-4 font-semibold">Customer / Lead</th>
+                    <th className="py-3 px-4 font-semibold">Surveyor</th>
+                    <th className="py-3 px-4 font-semibold">Telecaller</th>
+                    <th className="py-3 px-4 font-semibold">Status</th>
+                    <th className="py-3 px-4 font-semibold">Deleted Date</th>
+                    <th className="py-3 px-4 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedDeletedFiles.map(file => {
+                    const customerName = findValueByLabelRegex(file.original_lead, /name|customer/i);
+                    return (
+                      <tr key={file.id} className="border-b border-bg-border last:border-0 hover:bg-bg-primary/80 transition-colors">
+                        <td className="py-3 px-4 text-white font-medium">
+                          {file.file_form_template?.name || 'File Form'}
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary font-medium">
+                          {file.file_handler?.full_name || file.file_handler?.username || 'File Handler'}
+                        </td>
+                        <td className="py-3 px-4 text-white">
+                          <div>
+                            <span className="font-medium">{customerName !== '-' ? customerName : (file.original_lead_id ? file.original_lead_id.slice(0, 8) + '...' : 'Independent')}</span>
+                            {file.original_lead_id && (
+                              <span className="text-[10px] text-text-muted block font-mono">ID: {file.original_lead_id.slice(0, 8)}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary">
+                          {file.original_lead?.surveyor?.full_name || file.original_lead?.surveyor?.username || '-'}
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary">
+                          {file.telecaller_name || file.original_lead?.telecaller_name || file.original_lead?.telecaller?.full_name || file.original_lead?.telecaller?.username || '-'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="red">DELETED</Badge>
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary text-xs">
+                          {new Date(file.updated_at || file.submitted_at).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => setSelectedFileSubmission(file)}
+                            className="text-accent-blue border-accent-blue/30 hover:bg-accent-blue/10 text-xs py-1"
+                          >
+                            <Eye className="w-3.5 h-3.5 mr-1 inline" />
+                            View Form
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {deletedFiles.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-text-muted italic">
+                        No deleted files from file handler.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {(() => {
           const getCurrentArrayLength = () => {
-            switch (activeSlide) {
-              case 0: return telecallerData.length;
-              case 1: return assignedLeadsLogs.length;
-              case 2: return immediateLeads.length;
-              case 3: return revertedLeads.length;
-              case 4: return wrongNumberLeads.length;
-              case 5: return closedLeads.length;
-              case 6: return deletedLeads.length;
+            switch (slides[activeSlide]?.id) {
+              case 'performance': return telecallerData.length;
+              case 'assigned': return assignedLeadsLogs.length;
+              case 'immediate': return immediateLeads.length;
+              case 'reverted': return revertedLeads.length;
+              case 'wrong_number': return wrongNumberLeads.length;
+              case 'closed_leads': return closedLeads.length;
+              case 'deleted_leads': return deletedLeads.length;
+              case 'opened_files': return openedFiles.length;
+              case 'cleared_files': return clearedFiles.length;
+              case 'deleted_files': return deletedFiles.length;
               default: return 0;
             }
           };
@@ -1044,6 +1420,14 @@ export default function TeamLeadDashboard() {
         <ViewFormModal
           submission={selectedSub}
           onClose={() => setSelectedSub(null)}
+        />
+      )}
+
+      {/* File Submission View Modal (Read-only view mode for Team Lead) */}
+      {selectedFileSubmission && (
+        <ViewFileSubmissionModal
+          file={selectedFileSubmission}
+          onClose={() => setSelectedFileSubmission(null)}
         />
       )}
     </div>

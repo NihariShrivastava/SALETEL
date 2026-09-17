@@ -10,6 +10,7 @@ const DomainManagement = lazy(() => import('./pages/admin/DomainManagement'));
 const FormTemplateBuilder = lazy(() => import('./pages/admin/FormTemplateBuilder'));
 const FileFormManagement = lazy(() => import('./pages/admin/FileFormManagement'));
 const FileFormBuilder = lazy(() => import('./pages/admin/FileFormBuilder'));
+const FileSubmissionsManagement = lazy(() => import('./pages/admin/FileSubmissionsManagement'));
 const SurveyorManagement = lazy(() => import('./pages/admin/SurveyorManagement'));
 const CounterManagement = lazy(() => import('./pages/admin/CounterManagement'));
 const Submissions = lazy(() => import('./pages/admin/Submissions'));
@@ -99,6 +100,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="domains" element={<DomainManagement />} />
           <Route path="file-forms" element={<FileFormManagement />} />
+          <Route path="file-submissions" element={<FileSubmissionsManagement />} />
           <Route path="surveyors" element={<SurveyorManagement />} />
           <Route path="counters" element={<CounterManagement />} />
           <Route path="submissions" element={<Submissions />} />

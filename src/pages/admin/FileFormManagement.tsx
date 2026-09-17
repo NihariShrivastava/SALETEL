@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Plus, Edit2, Trash2, Search, FileText } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, FileText, Eye, FolderOpen } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import type { FileFormTemplate } from '../../types';
@@ -63,10 +63,20 @@ export default function FileFormManagement() {
           <h2 className="text-2xl font-bold text-white tracking-tight">File Form Management</h2>
           <p className="text-text-secondary text-sm mt-1">Manage templates assigned to File Handlers</p>
         </div>
-        <Button onClick={() => navigate('/admin/file-forms/new')}>
-          <Plus className="w-4 h-4 mr-2" />
-          Create File Form
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline"
+            onClick={() => navigate('/admin/file-submissions')}
+            className="border-accent-blue/40 text-accent-blue hover:bg-accent-blue/10 flex items-center gap-2"
+          >
+            <FolderOpen className="w-4 h-4" />
+            View / Edit Forms
+          </Button>
+          <Button onClick={() => navigate('/admin/file-forms/new')}>
+            <Plus className="w-4 h-4 mr-2" />
+            Create File Form
+          </Button>
+        </div>
       </div>
 
       <Card className="p-0 overflow-hidden flex flex-col">
@@ -112,6 +122,13 @@ export default function FileFormManagement() {
                   </td>
                   <td className="py-4 px-5 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => navigate(`/admin/file-submissions?templateId=${t.id}`)} 
+                        className="p-1.5 text-text-muted hover:text-accent-blue rounded hover:bg-bg-primary"
+                        title="View / Edit Submissions"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                       <button onClick={() => navigate(`/admin/file-forms/edit/${t.id}`)} className="p-1.5 text-text-muted hover:text-white rounded hover:bg-bg-primary">
                         <Edit2 className="w-4 h-4" />
                       </button>

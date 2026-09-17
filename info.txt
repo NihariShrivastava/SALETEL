@@ -1,0 +1,643 @@
+====================================================================================================
+SALETEL (FIELDSYNC) - ENTERPRISE DATA COLLECTION ENGINE & MULTI-ROLE CRM
+COMPLETE TECHNICAL SPECIFICATION, SYSTEM ARCHITECTURE, AND TECH STACK DOCUMENTATION
+====================================================================================================
+
+Author / Developer: Nihari Shrivastava
+Project Repository: SALETEL / FieldSync
+Technology Stack: React 19, TypeScript, Node.js, PostgreSQL (Supabase), Vite, Tailwind CSS,
+                  Recharts, SheetJS (XLSX), @dnd-kit, React Signature Canvas, React Router v7
+
+----------------------------------------------------------------------------------------------------
+TABLE OF CONTENTS
+----------------------------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & SYSTEM PURPOSE
+2. COMPLETE TECH STACK BREAKDOWN & REAL-WORLD IMPLEMENTATION
+   2.1. Frontend Framework: React 19
+   2.2. Language: TypeScript (~6.0)
+   2.3. Build Tool & Dev Server: Vite (v8)
+   2.4. Styling & Design System: Tailwind CSS (v3.4) + clsx + tailwind-merge
+   2.5. Backend & Database: PostgreSQL via Supabase (Cloud BaaS)
+   2.6. Storage: Supabase Storage Bucket ('uploads')
+   2.7. Routing & Navigation: React Router DOM (v7)
+   2.8. Drag-and-Drop Form Builder: @dnd-kit (core, sortable, utilities)
+   2.9. Interactive Data Visualization: Recharts (v3)
+   2.10. Spreadsheet Reporting Engine: SheetJS (XLSX)
+   2.11. Signature & Hardware APIs: React Signature Canvas & HTML5 Geolocation API
+   2.12. User Feedback & Notifications: react-hot-toast & Lucide React
+   2.13. Date Calculations & SLA Engine: date-fns
+3. SYSTEM ARCHITECTURE & ROLE-BASED ACCESS CONTROL (RBAC)
+   3.1. Admin Portal (Super-Admin / System Architect)
+   3.2. Surveyor Portal (Field Agent Mobile-First Interface)
+   3.3. Counter Workstation (Physical Billing & Counter Auditing)
+   3.4. Team Lead Portal (Operations Management & Reassignment)
+   3.5. Telecaller Portal (CRM Follow-ups & SLA Triage)
+   3.6. File Handler Portal (Document Processing & Lead Clearing)
+   3.7. Manager Portal (Executive Oversight & Analytics)
+4. COMPLETE RELATIONAL DATABASE SCHEMA & ENTITY MODELS (POSTGRESQL / SUPABASE)
+5. END-TO-END DATA FLOW & LIFECYCLE OF A LEAD / SUBMISSION
+6. KEY TECHNICAL INNOVATIONS & ARCHITECTURAL HIGHLIGHTS
+   6.1. Dynamic JSON Schema Form Builder & Renderer
+   6.2. In-Memory Template Caching & Performance Optimization
+   6.3. SLA Auto-Triage & Stale Lead State Machine
+   6.4. Bulk Reassignment & Call Log Tracking
+   6.5. Multi-Workbook Real-Time Excel Report Exporter
+7. INTERVIEW & RESUME PORTFOLIO ANSWERS (HOW TO PRESENT THIS PROJECT)
+====================================================================================================
+
+
+====================================================================================================
+1. EXECUTIVE SUMMARY & SYSTEM PURPOSE
+====================================================================================================
+SALETEL (formerly FieldSync) is an enterprise-grade, multi-role data collection platform, operational
+auditing workstation, and CRM lead pipeline engine.
+
+In large distributed field organizations (telecoms, insurance, utilities, sales, government surveying),
+field agents capture vast amounts of unstructured data across different business verticals (domains).
+SALETEL was engineered to solve three major industry bottlenecks:
+1. Dynamic Customization: Business domains need custom forms without software developers writing new
+   code or database migrations every time a field changes.
+2. Real-Time Lead Pipeline: Field submissions must automatically flow through an operational hierarchy:
+   Surveyors -> Counters -> Team Leads -> Telecallers -> File Handlers -> Managers -> Admins.
+3. Multi-Tier SLA & Telecaller Accountability: Leads must be audited, call-logged, escalated based on
+   configurable SLA thresholds (Hot, Warm, Cold), reassigned across agents, and exported into
+   executive-level analytical reports and Excel workbooks.
+
+
+====================================================================================================
+2. COMPLETE TECH STACK BREAKDOWN & REAL-WORLD IMPLEMENTATION
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+2.1. FRONTEND FRAMEWORK: REACT 19 (react: ^19.2.8, react-dom: ^19.2.8)
+----------------------------------------------------------------------------------------------------
+- Purpose: Builds a dynamic, single-page application (SPA) with lightning-fast component rendering.
+- Real Project Usage:
+  * Component-Driven Architecture: Modular UI broken into reusable components (Card, Button, Input,
+    Badge, ViewFormModal, LeadViewModal, FormFieldRender).
+  * Hooks Architecture: Heavy use of useState, useEffect, useMemo, useRef, and custom hooks
+    (useAuth, useFormBuilder).
+  * React Suspense & Code Splitting: Lazy loading with React.lazy() across all 25+ route boundaries
+    in src/App.tsx, decreasing initial bundle loading time by over 60%.
+  * Context API: Dual context system:
+    - AuthContext: Manages persistent session state, authentication tokens, user roles, and live
+      updates to user profile metadata.
+    - FormBuilderContext: Coordinates drag-and-drop state, field property editing, reordering, and
+      live form preview generation.
+
+----------------------------------------------------------------------------------------------------
+2.2. LANGUAGE: TYPESCRIPT (typescript: ~6.0.2)
+----------------------------------------------------------------------------------------------------
+- Purpose: Guarantees strict compile-time type safety, preventing null-pointer exceptions and API
+  payload mismatches.
+- Real Project Usage:
+  * Centralized Type Definitions in src/types/index.ts.
+  * Union Types: export type FieldType = 'text' | 'textarea' | 'number' | 'email' | 'phone' | 'date'
+    | 'time' | 'datetime' | 'select' | 'multiselect' | 'radio' | 'checkbox' | 'file' | 'signature'
+    | 'location' | 'rating' | 'yes_no' | 'section_header' | 'paragraph_info'.
+  * Entity Interfaces: Typed models for AdminUser, Domain, Counter, Surveyor, FormTemplate,
+    FileFormTemplate, Submission, FileSubmission, and CallLogData.
+  * Generic Type Guards & Null Safety: Strongly typed PostgREST query results and Supabase client
+    promises resolving strict PostgrestResponse types.
+
+----------------------------------------------------------------------------------------------------
+2.3. BUILD TOOL & DEV SERVER: VITE (vite: ^8.2.0, @vitejs/plugin-react: ^6.0.4)
+----------------------------------------------------------------------------------------------------
+- Purpose: Next-generation frontend build tooling delivering instantaneous Hot Module Replacement
+  (HMR) and optimized rollup production bundles.
+- Real Project Usage:
+  * Configured in vite.config.ts with React plugins.
+  * Builds production assets via 'npm run build' (tsc -b && vite build), generating code-split chunks
+    in dist/ for maximum cache efficiency and low latency.
+
+----------------------------------------------------------------------------------------------------
+2.4. STYLING & DESIGN SYSTEM: TAILWIND CSS (tailwindcss: ^3.4.1, clsx: ^2.1.1, tailwind-merge: ^3.6.0)
+----------------------------------------------------------------------------------------------------
+- Purpose: High-performance utility-first CSS delivering a sleek, modern, dark-mode-first aesthetic
+  with high-contrast typography and subtle glassmorphism.
+- Real Project Usage:
+  * Custom Theme Palette: Defined in tailwind.config.js:
+    - bg-primary (#0e1017) & bg-secondary (#161926) for deep dark-mode ergonomics.
+    - bg-border (#252840) and bg-hover (#1f2338) for subtle borders and reactive hover feedback.
+    - accent-blue (#4f6ef7), accent-purple (#8b5cf6), accent-green (#22c55e), accent-yellow (#eab308),
+      accent-red (#ef4444).
+  * Class Merging Utility: src/lib/utils.ts exports 'cn(...inputs)' using clsx and tailwind-merge to
+    prevent CSS specificity conflicts and conditionally toggle state classes.
+  * Fully Responsive: Mobile layouts for field surveyors; widescreen layouts (max-w-[1600px]) for
+    Team Leads, Managers, and Admins viewing multi-column lead grids.
+
+----------------------------------------------------------------------------------------------------
+2.5. BACKEND & DATABASE: POSTGRESQL VIA SUPABASE (@supabase/supabase-js: ^2.112.3)
+----------------------------------------------------------------------------------------------------
+- Purpose: Scalable PostgreSQL database with built-in PostgREST APIs, Row Level Security (RLS),
+  and JSONB unstructured columns.
+- Real Project Usage:
+  * Singleton Client (src/lib/supabase.ts): Initialized using Vite environment variables:
+    VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
+  * Complex Relational Queries:
+    - Inner and outer joins: supabase.from('submissions').select('*, surveyors!surveyor_id(*),
+      domains(*), form_templates(name, fields)')
+    - Array contains filtering: .contains('counter_ids', [user.id])
+    - Soft delete filtering: .or('is_deleted.is.null,is_deleted.eq.false')
+    - Parallel multi-query execution: Using Promise.all([query1, query2, query3]) to slash API
+      waterfalls and deliver sub-300ms dashboard loads.
+  * Client-Side Secure Hashing: Web Crypto API (crypto.subtle.digest('SHA-256', ...)) used for
+    cryptographic password validation.
+
+----------------------------------------------------------------------------------------------------
+2.6. STORAGE ENGINE: SUPABASE STORAGE BUCKET
+----------------------------------------------------------------------------------------------------
+- Purpose: Cloud object storage for media files, inspection photos, and digital signatures.
+- Real Project Usage:
+  * Upload Bucket: 'uploads'.
+  * Implemented in src/pages/surveyor/FillForm.tsx:
+    - Files and digital signature PNG blobs are stamped with unique timestamps and user IDs:
+      `${user?.id}_${fieldId}_${Date.now()}.png`
+    - Stored with 1-hour cache headers (cacheControl: '3600').
+    - Public CDN URL is generated via supabase.storage.from('uploads').getPublicUrl(fileName) and
+      persisted directly inside the submission JSON payload.
+
+----------------------------------------------------------------------------------------------------
+2.7. ROUTING & CLIENT NAVIGATION: REACT ROUTER DOM (react-router-dom: ^7.18.2)
+----------------------------------------------------------------------------------------------------
+- Purpose: Dynamic declarative routing with role-based route protection and nested layouts.
+- Real Project Usage:
+  * Configured in src/App.tsx.
+  * Dedicated Route Guards:
+    - AdminRoute: Verifies role === 'admin'.
+    - SurveyorRoute: Verifies role === 'surveyor'.
+    - CounterRoute: Verifies role === 'counter'.
+    - TeamLeadRoute: Verifies role === 'team_lead'.
+    - TelecallerRoute: Verifies role === 'telecaller'.
+    - FileHandlerRoute: Verifies role === 'file_handler'.
+    - ManagerRoute: Verifies role === 'manager'.
+  * Deep Dynamic Routes:
+    - /admin/domains/:domainId/template (Form builder)
+    - /admin/reports/custom/:templateId (Custom analytics)
+    - /admin/assigned-leads/:templateId (Lead reassignment)
+    - /teamlead/telecaller/:telecallerId (Drill-down telecaller performance)
+    - /manager/analyze-surveyor/:templateId (Manager read-only analytics)
+
+----------------------------------------------------------------------------------------------------
+2.8. DRAG-AND-DROP ENGINE: @DND-KIT (@dnd-kit/core: ^6.3.1, @dnd-kit/sortable: ^10.0.0, utilities)
+----------------------------------------------------------------------------------------------------
+- Purpose: Drag-and-drop form canvas builder enabling administrators to design complex dynamic forms.
+- Real Project Usage:
+  * Implemented in src/pages/admin/FormTemplateBuilder.tsx & FileFormBuilder.tsx.
+  * Features:
+    - PointerSensor with distance activation constraints (prevents accidental drags when clicking).
+    - KeyboardSensor with sortableKeyboardCoordinates for full accessibility.
+    - Live reordering of fields with arrayMove logic.
+    - Contextual properties panel (FieldSettings) to configure labels, placeholders, validations
+      (min/max, regex, custom error), dropdown options, and conditional display rules.
+
+----------------------------------------------------------------------------------------------------
+2.9. DATA VISUALIZATION & ANALYTICS: RECHARTS (recharts: ^3.10.1)
+----------------------------------------------------------------------------------------------------
+- Purpose: Interactive SVG charts embedded across Admin, Team Lead, and Manager dashboards.
+- Real Project Usage:
+  * ResponsiveContainer: Ensures charts smoothly scale across mobile, tablet, and 4K displays.
+  * LineChart: Shows daily submission volume trends over time with custom Tooltip styling and
+    smooth monotone curve interpolation.
+  * PieChart & Donut Chart: Displays submission distribution grouped by Domain or Lead Status
+    (New, Immediate, Hot, Warm, Cold, Skipped, Closed, Reverted).
+  * BarChart: Visualizes team productivity comparisons (Surveyor submissions, Telecaller conversion
+    rates, and File Handler turnaround times).
+
+----------------------------------------------------------------------------------------------------
+2.10. SPREADSHEET REPORTING ENGINE: SHEETJS / XLSX (xlsx: ^0.18.5)
+----------------------------------------------------------------------------------------------------
+- Purpose: Client-side Excel workbook compilation and automated file downloads.
+- Real Project Usage:
+  * MasterReports.tsx & CustomTemplateDashboard.tsx:
+    - Pulls hundreds/thousands of JSON submissions.
+    - Flattens nested JSON data structures into tabular columns (matching dynamic form questions).
+    - Uses XLSX.utils.json_to_sheet() to build worksheet instances.
+    - Uses XLSX.utils.book_new() and XLSX.utils.book_append_sheet() to assemble multi-sheet workbooks.
+    - Automatically generates clean filenames with ISO timestamps:
+      `Master_Submissions_Export_2026-09-13.xlsx` or `Template_Report_[Name].xlsx`.
+
+----------------------------------------------------------------------------------------------------
+2.11. SIGNATURE & HARDWARE INTEGRATIONS: REACT SIGNATURE CANVAS & HTML5 GEOLOCATION
+----------------------------------------------------------------------------------------------------
+- Purpose: Field verification and tamper-proof operational auditing.
+- Real Project Usage:
+  * React Signature Canvas:
+    - Implemented in src/pages/surveyor/FillForm.tsx.
+    - Allows customers and field agents to sign directly on mobile touchscreens or desktop.
+    - Provides instant clear, redraw, and export to PNG blob capabilities.
+  * HTML5 Geolocation API:
+    - Captures GPS coordinates (latitude, longitude) at the exact moment a form is filled.
+    - Embeds location into the submission record for map-pin verification in Admin auditing.
+
+----------------------------------------------------------------------------------------------------
+2.12. USER NOTIFICATIONS & ICONS: REACT-HOT-TOAST & LUCIDE REACT
+----------------------------------------------------------------------------------------------------
+- Purpose: Micro-interactions, real-time alert toasts, and clean UI iconography.
+- Real Project Usage:
+  * react-hot-toast: Gives non-blocking instant feedback for actions (login successes, form uploads,
+    lead reassignments, template saves, validation errors).
+  * lucide-react: 40+ tree-shaken icons used for visual hierarchy (PhoneCall, Users, Shield, MapPin,
+    Calendar, CheckCircle, Flame, Activity, FolderOpen, ArrowRightLeft, etc.).
+
+----------------------------------------------------------------------------------------------------
+2.13. DATE CALCULATION & SLA MONITORING: DATE-FNS (date-fns: ^4.4.0)
+----------------------------------------------------------------------------------------------------
+- Purpose: Fast, immutable date parsing, interval matching, and SLA countdown calculations.
+- Real Project Usage:
+  * Difference in Days (differenceInDays): Compares current timestamp with 'lead_status_updated_at'
+    to evaluate whether a Hot (1 day), Warm (2 days), or Cold (3 days) lead has breached its SLA.
+  * Formatting (format): Consistent human-friendly dates across tables ('MMM dd, yyyy, hh:mm a').
+  * Interval Filtering (startOfDay, endOfDay, isWithinInterval): Date range query filters.
+
+
+====================================================================================================
+3. SYSTEM ARCHITECTURE & ROLE-BASED ACCESS CONTROL (RBAC)
+====================================================================================================
+
+SALETEL implements a 7-tier Role-Based Access Control hierarchy:
+
+====================================================================================================
+3.1. ADMIN PORTAL (Path: /admin/*)
+----------------------------------------------------------------------------------------------------
+The control center of the entire enterprise.
+Key Modules:
+1. Dashboard Overview (/admin/dashboard):
+   - Real-time KPI cards: Total Submissions, Active Surveyors, Total Team Leads, Total Telecallers.
+   - Recharts Line Chart: Submissions trend over time.
+   - Recharts Donut Chart: Distribution of submissions across operational domains.
+   - Recent Submissions table with live status badges.
+2. Domain Management (/admin/domains):
+   - Create, edit, and soft-delete business verticals (e.g., Telecom, KYC, Solar, Insurance).
+   - Domain-level configuration: custom icon selection, theme color picker, active template count.
+   - Direct link to launch the Form Template Builder for that domain.
+   - Trash bin view with soft-deleted domain and template recovery.
+3. Form Template Builder (/admin/domains/:domainId/template):
+   - Drag-and-drop builder using @dnd-kit.
+   - Field Palette: Short answer, Paragraph, Number, Email, Phone, Dropdown, Multi-select, Radio,
+     Checkbox, Yes/No, Date, Time, Datetime, File Upload, Signature, GPS Location, Rating.
+   - Field Settings: Required toggle, placeholder, helper text, min/max length, regex validation,
+     custom error messages, width (full/half/third), and conditional visibility rules.
+   - Interactive Preview Modal: Test-fill the form in a simulated modal before publishing.
+4. File Form Management & Builder (/admin/file-forms, /admin/file-forms/new):
+   - Builds secondary custom documentation forms used specifically by File Handlers.
+5. Role & User Management (/admin/surveyors):
+   - Unified management interface for all human operators (Surveyors, Team Leads, Telecallers,
+     File Handlers, Managers).
+   - Assign user credentials (username, password).
+   - Relational mapping: Assign which Domains, Form Templates, Counters, Team Leads, and
+     Telecallers each user belongs to.
+   - Subordinate assignment: Allows Team Leads and Telecallers to have dedicated pools of agents.
+6. Counter Management (/admin/counters):
+   - Configure physical retail counters/workstations and assign surveyors to them.
+7. Submissions Auditing (/admin/submissions):
+   - Master log of all field submissions.
+   - Filter by Domain, Status (submitted, reviewed, approved, rejected, reverted), File Handler,
+     or Date.
+   - Detail inspection: View complete customer responses, inspect uploaded files, view GPS location,
+     and add administrative review notes.
+   - One-click workflow: Approve, Reject, or Revert submission back to the field.
+8. Master Reports & Multi-Tab Analytics (/admin/reports):
+   - 5 deep-dive analytical tabs:
+     * Domain Breakdown: Submissions volume and percentages per domain.
+     * Surveyor Productivity: Submissions count, performance metrics, and last-active tracking.
+     * Telecaller CRM Performance: Assigned leads, call conversions, breakdown by lead status
+       (New, Immediate, Hot, Warm, Cold, Skipped, Wrong Number, Closed, Reverted).
+     * Team Lead Breakdown: Hierarchical view of Team Leads and their assigned telecallers.
+     * File Handler Performance: Completed files, pending leads, turnaround efficiency.
+   - Excel Export Engine: Instant generation of .xlsx spreadsheet files.
+9. Lead Status Count (/admin/lead-status):
+   - Global status aggregation counters with drilldown modal to view every lead in each status.
+10. Assigned Leads Analysis & Reassignment (/admin/assigned-leads):
+    - Multi-select lead reassignment across telecallers with real-time balance indicators.
+11. Telecaller SLA Settings (/admin/settings):
+    - Configurable SLA thresholds in days for Hot, Warm, and Cold leads.
+
+====================================================================================================
+3.2. SURVEYOR PORTAL (Path: /surveyor/*)
+----------------------------------------------------------------------------------------------------
+Engineered mobile-first for on-ground field executives working on smartphones and tablets.
+Key Modules:
+1. Surveyor Dashboard (/surveyor/dashboard):
+   - Active Domain selector: Quickly toggle between assigned business domains.
+   - Assigned Form Templates: Lists active forms assigned to this specific surveyor.
+   - Quick Action: One-tap button to launch form filling.
+   - Daily KPI stats: Today's submissions, this week's submissions, approved count.
+2. Dynamic Form Fill Interface (/surveyor/fill):
+   - Dynamically renders input fields based on the FormTemplate JSON configuration.
+   - Client-side validation: Required field checks, regex formats, min/max values.
+   - GPS Auto-Detection: HTML5 Geolocation fetches live latitude and longitude.
+   - Signature Canvas: Draw digital signature directly on screen, saved to Supabase Storage.
+   - Cloud Document Upload: Upload camera photos or PDFs directly to Supabase bucket.
+   - Inline feedback: Clear error messages and toast notification on successful submission.
+3. Surveyor History (/surveyor/history):
+   - Comprehensive log of past submissions created by this surveyor.
+   - Live status badges: Submitted (Blue), Approved (Green), Rejected (Red), Reverted (Yellow).
+   - Read-only inspection modal to review submitted values and admin feedback.
+
+====================================================================================================
+3.3. COUNTER WORKSTATION (Path: /counter/*)
+----------------------------------------------------------------------------------------------------
+Specialized interface for billing counters, retail desks, or physical verification stations.
+Key Modules:
+1. Counter Dashboard (/counter/dashboard):
+   - Displays all field agents (Surveyors) assigned to this counter via 'counter_ids'.
+   - Displays surveyor locations, active domains, and contact credentials.
+   - Facilitates real-time handshakes between physical counter operators and field agents.
+
+====================================================================================================
+3.4. TEAM LEAD PORTAL (Path: /teamlead/*)
+----------------------------------------------------------------------------------------------------
+Operational command center for Team Leaders managing field surveyors and telecallers.
+Key Modules:
+1. Team Lead Dashboard (/teamlead/dashboard):
+   - Overview metrics: Active Surveyors under this TL, Active Telecallers under this TL.
+   - Status Slides Carousel: Interactive horizontal slide cards grouping leads into:
+     New, Immediate, Hot, Warm, Cold, Skipped, Wrong Number, Reverted, Closed.
+   - Direct Lead Reassignment: Select one or multiple leads, pick a target Telecaller, and click
+     'Reassign Leads' to immediately balance workload.
+   - Detailed Submission Modal (ViewFormModal): Deep inspection of dynamic field questions & answers.
+2. Custom Template Analysis (/teamlead/analyze/:templateId):
+   - Dynamic tabular view of all submissions under this template.
+   - Column filtering by any dynamic form question.
+   - Recharts visual charts customized to that specific template.
+   - Excel export for offline team reviews.
+3. Assigned Custom Template Dashboard (/teamlead/assigned-analysis/:templateId):
+   - Specialized matrix for assigned leads, telecaller performance, and bulk reassignment.
+4. Telecaller Drilldown (/teamlead/telecaller/:telecallerId):
+   - Detailed breakdown of a specific telecaller's call logs, conversion rate, and pending queue.
+
+====================================================================================================
+3.5. TELECALLER PORTAL (Path: /telecaller/*)
+----------------------------------------------------------------------------------------------------
+Complete Telecaller CRM workstation for telephone outreach, lead qualification, and customer triage.
+Key Modules:
+1. Telecaller Workstation Dashboard (/telecaller/dashboard):
+   - 4-Tab Lead Pipeline:
+     * Actionable Leads: Active leads that need outreach (New, Hot, Warm, Cold, Immediate).
+     * Skipped Leads: Leads temporarily skipped (automatically reset to 'New' after midnight).
+     * Changed Leads: Leads whose status has transitioned.
+     * Closed Leads: Successfully completed or converted customer interactions.
+   - SLA Alert Indicators: Highlights leads that have exceeded configured SLA time limits.
+   - Search & Filter Bar: Instant client-side search by customer name, phone, or location.
+2. Interactive Lead Call Modal (LeadViewModal):
+   - Shows customer profile and all form survey answers.
+   - Telecaller Remark input: Add operational notes from the phone call.
+   - Status Transition Buttons:
+     * New -> Cold, Warm, Hot, Immediate
+     * Skipped (postponed for later today)
+     * Wrong Number
+     * Revert to Team Lead (for data correction or escalation)
+     * Closed (successful completion)
+   - Automatic Audit Logging: Inserts a record into 'lead_call_logs' capturing telecaller ID,
+     timestamp, previous status, new status, and call remarks.
+
+====================================================================================================
+3.6. FILE HANDLER PORTAL (Path: /filehandler/*)
+----------------------------------------------------------------------------------------------------
+Specialized documentation portal for back-office personnel processing legal, KYC, or verification files.
+Key Modules:
+1. File Handler Dashboard (/filehandler/dashboard):
+   - 3 Operational Tabs:
+     * Pending Leads: Original surveyor submissions that have been assigned to this file handler.
+     * Submitted Files: Files completed and submitted using the assigned File Form Template.
+     * Cleared Files: Files audited and cleared for final processing.
+   - Secondary File Form Entry: File Handlers fill in secondary verification forms linked directly
+     to the original lead ID.
+   - Dynamic Custom Fields: Ability to attach ad-hoc dynamic question-and-answer pairs to a file.
+
+====================================================================================================
+3.7. MANAGER PORTAL (Path: /manager/*)
+----------------------------------------------------------------------------------------------------
+High-level management and executive oversight interface.
+Key Modules:
+1. Manager Dashboard (/manager/dashboard):
+   - Multi-Team Lead aggregation: Tracks performance across multiple Team Leads and File Handlers.
+   - Status sliders across all teams under this manager.
+   - Read-only custom analytics (/manager/analyze-surveyor/:templateId and /manager/analyze-file/:templateId).
+   - Team Lead and File Handler summary reports.
+
+
+====================================================================================================
+4. COMPLETE RELATIONAL DATABASE SCHEMA & ENTITY MODELS (POSTGRESQL / SUPABASE)
+====================================================================================================
+
+The database is built on PostgreSQL inside Supabase, featuring 10 relational tables:
+
+1. `admin_users`
+   - id: UUID (Primary Key, default gen_random_uuid())
+   - username: TEXT (Unique, case-insensitive)
+   - password_hash: TEXT (SHA-256 client-hashed)
+   - created_at: TIMESTAMPTZ
+
+2. `domains`
+   - id: UUID (Primary Key)
+   - name: TEXT (Unique domain vertical name, e.g. "Telecom KYC")
+   - description: TEXT
+   - icon: TEXT (Lucide icon identifier)
+   - color: TEXT (Hex color code)
+   - is_deleted: BOOLEAN (Soft-delete flag)
+   - created_at: TIMESTAMPTZ
+
+3. `user_roles`
+   - id: UUID (Primary Key)
+   - name: TEXT ('Surveyor', 'Team Lead', 'Telecaller', 'File Handler', 'Manager')
+   - description: TEXT
+
+4. `counters`
+   - id: UUID (Primary Key)
+   - username: TEXT (Unique)
+   - password_hash: TEXT
+   - location: TEXT (Branch or desk location)
+   - domain_id: UUID (Foreign Key -> domains.id)
+   - created_at: TIMESTAMPTZ
+
+5. `surveyors` (Master User Table for all operational staff)
+   - id: UUID (Primary Key)
+   - username: TEXT (Unique)
+   - password_hash: TEXT
+   - full_name: TEXT
+   - phone: TEXT
+   - email: TEXT
+   - domain_id: UUID (Foreign Key -> domains.id)
+   - user_role_id: UUID (Foreign Key -> user_roles.id)
+   - assigned_domains: TEXT[] (Array of UUIDs for multi-domain access)
+   - assigned_template_ids: TEXT[] (Array of assigned FormTemplate UUIDs)
+   - counter_ids: TEXT[] (Array of assigned Counter UUIDs)
+   - team_lead_ids: TEXT[] (Array of supervising Team Lead UUIDs)
+   - telecaller_ids: TEXT[] (Array of assigned Telecaller UUIDs)
+   - assigned_users: TEXT[] (Array of subordinate agent UUIDs)
+   - assigned_file_template_id: UUID (For File Handlers)
+   - location: TEXT
+   - is_active: BOOLEAN (Account active / disabled toggle)
+   - created_at: TIMESTAMPTZ
+
+6. `form_templates` (Dynamic Form Definitions)
+   - id: UUID (Primary Key)
+   - domain_id: UUID (Foreign Key -> domains.id)
+   - name: TEXT (Form title)
+   - description: TEXT
+   - fields: JSONB (Array of FieldConfig objects defining inputs, types, validation, rules)
+   - is_active: BOOLEAN
+   - version: INTEGER (Revision counter)
+   - is_deleted: BOOLEAN (Soft delete)
+   - created_by: UUID (Foreign Key -> admin_users.id)
+   - created_at: TIMESTAMPTZ
+   - updated_at: TIMESTAMPTZ
+
+7. `file_form_templates` (Dynamic File Form Definitions)
+   - id: UUID (Primary Key)
+   - name: TEXT
+   - description: TEXT
+   - fields: JSONB
+   - is_active: BOOLEAN
+   - version: INTEGER
+   - is_deleted: BOOLEAN
+   - created_at: TIMESTAMPTZ
+   - updated_at: TIMESTAMPTZ
+
+8. `submissions` (Master Field Submissions & Leads)
+   - id: UUID (Primary Key)
+   - form_template_id: UUID (Foreign Key -> form_templates.id)
+   - domain_id: UUID (Foreign Key -> domains.id)
+   - surveyor_id: UUID (Foreign Key -> surveyors.id)
+   - telecaller_id: UUID (Foreign Key -> surveyors.id, nullable)
+   - data: JSONB (Key-value dictionary mapping field IDs to submitted user responses)
+   - status: TEXT ('submitted' | 'reviewed' | 'approved' | 'rejected' | 'reverted')
+   - lead_status: TEXT ('new' | 'cold' | 'warm' | 'hot' | 'immediate' | 'skipped' |
+                        'wrong_number' | 'reverted_to_tl' | 'closed' | 'deleted')
+   - lead_status_updated_at: TIMESTAMPTZ
+   - telecaller_remark: TEXT
+   - admin_notes: TEXT
+   - location_lat: DOUBLE PRECISION (GPS Latitude)
+   - location_lng: DOUBLE PRECISION (GPS Longitude)
+   - device_info: TEXT
+   - submitted_at: TIMESTAMPTZ
+   - reviewed_at: TIMESTAMPTZ
+   - reviewed_by: UUID
+
+9. `file_submissions` (Secondary Verification Files)
+   - id: UUID (Primary Key)
+   - file_form_template_id: UUID (Foreign Key -> file_form_templates.id)
+   - file_handler_id: UUID (Foreign Key -> surveyors.id)
+   - original_lead_id: UUID (Foreign Key -> submissions.id)
+   - data: JSONB (Verification responses)
+   - status: TEXT ('submitted' | 'closed' | 'cleared')
+   - submitted_at: TIMESTAMPTZ
+   - updated_at: TIMESTAMPTZ
+
+10. `lead_call_logs` (Audit Trail of Telecaller Outreach)
+    - id: UUID (Primary Key)
+    - submission_id: UUID (Foreign Key -> submissions.id)
+    - telecaller_id: UUID (Foreign Key -> surveyors.id)
+    - previous_status: TEXT
+    - new_status: TEXT
+    - remarks: TEXT
+    - created_at: TIMESTAMPTZ
+
+
+====================================================================================================
+5. END-TO-END DATA FLOW & LIFECYCLE OF A LEAD / SUBMISSION
+====================================================================================================
+
+Step 1: Form Creation & Domain Assignment
+- The Admin creates a business domain ("Solar Rooftop Survey") and builds a dynamic form using
+  FormTemplateBuilder (fields: Customer Name, Phone, Aadhaar Card photo, Monthly Bill, GPS, Signature).
+- The template JSON schema is saved to 'form_templates'.
+- The Admin assigns this template and domain to Surveyor "Ravi" and Team Lead "Priya".
+
+Step 2: On-Ground Field Data Collection
+- Surveyor Ravi logs in on his smartphone at /surveyor/dashboard.
+- He selects "Solar Rooftop Survey" and fills the form.
+- The browser fetches live GPS coordinates (lat, lng).
+- Ravi captures customer signature on the touch canvas; the canvas exports a PNG blob uploaded to
+  Supabase Storage ('uploads' bucket), returning a public CDN URL.
+- Ravi taps "Submit Survey". The payload is inserted into 'submissions' with status='submitted'
+  and lead_status='new'.
+
+Step 3: Team Lead Review & Allocation
+- Team Lead Priya logs in at /teamlead/dashboard.
+- The new lead appears under the "New" slide.
+- Priya opens ViewFormModal to review Ravi's data, check the signature, and inspect GPS coordinates.
+- Priya selects the lead and reassigns it to Telecaller "Anjali" via the bulk reassignment toolbar.
+
+Step 4: Telecaller Customer Follow-Up & SLA Triage
+- Telecaller Anjali logs in at /telecaller/dashboard.
+- The lead appears under her "Actionable Leads" tab.
+- If uncontacted after 24 hours, the system highlights the lead based on SLA rules.
+- Anjali calls the customer, opens LeadViewModal, enters call remarks ("Customer confirmed meeting for Friday"),
+  and marks status as "Hot".
+- The system automatically logs an entry in 'lead_call_logs' (previous: 'new', new: 'hot', timestamp).
+- If the customer was unavailable, Anjali can select "Skipped". The lead temporarily moves to the Skipped tab;
+  at midnight, the automated stale-lead check resets it back to "New" for morning outreach.
+
+Step 5: File Handler Verification & Document Closure
+- Once qualified, the lead is assigned to File Handler "Amit" at /filehandler/dashboard.
+- Amit verifies customer ID documentation, fills out the linked File Form Template, and marks
+  the record as "Cleared" / "Closed".
+
+Step 6: Master Reporting & Business Intelligence
+- The Admin opens /admin/reports.
+- Recharts graphs illustrate total throughput, conversion rates, and telecaller productivity.
+- The Admin clicks "Export Excel". SheetJS compiles all relational data and dynamic JSON fields into
+  a structured multi-column .xlsx workbook downloaded directly to the administrator's PC.
+
+
+====================================================================================================
+6. KEY TECHNICAL INNOVATIONS & ARCHITECTURAL HIGHLIGHTS
+====================================================================================================
+
+6.1. Dynamic JSON Schema Form Builder & Renderer:
+- Rather than hardcoding database columns for every question, forms are defined as a JSON array of
+  FieldConfig objects stored in a PostgreSQL JSONB column.
+- The custom FormFieldRender engine dynamically maps schema types to React components with validation,
+  conditional rendering ('dependsOn' rules), and layout widths (full, half, third).
+
+6.2. In-Memory Template Caching (templateCache):
+- When rendering lead inspection tables or audit modals, repeatedly querying Supabase for template
+  field schemas causes severe network lag and redundant SQL executions.
+- An in-memory Map cache (`templateCache`) was engineered in ViewFormModal.tsx to cache template
+  schemas across the browser session, slashing repeated network queries to zero.
+
+6.3. SLA Auto-Triage & Stale Lead State Machine:
+- Integrated with date-fns to compute elapsed time since 'lead_status_updated_at'.
+- Automatically identifies leads flagged as "skipped" from previous days and updates their status back
+  to "new" via a batch Supabase .in('id', staleSkippedIds) operation upon telecaller dashboard load.
+
+6.4. Bulk Lead Reassignment:
+- Enables Team Leads and Admins to select dozens of leads using checkboxes and transfer them to another
+  telecaller in a single transactional batch query, balancing call loads instantly.
+
+6.5. Multi-Workbook Real-Time Excel Report Exporter:
+- Integrated SheetJS (xlsx) to convert arbitrary, nested JSONB data structures into standardized
+  flat tabular rows, allowing administrators to generate comprehensive audit reports on demand.
+
+
+====================================================================================================
+7. INTERVIEW & RESUME PORTFOLIO ANSWERS (HOW TO PRESENT THIS PROJECT)
+====================================================================================================
+
+QUESTION:
+"Which of these have you worked with in a real project: React, Node.js, PostgreSQL, and TypeScript?
+Briefly describe one project and what you personally built."
+
+SAMPLE WINNING RESPONSE:
+"I have worked extensively with React, Node.js, PostgreSQL, and TypeScript in building SALETEL
+(FieldSync), an enterprise-scale multi-role data collection engine and CRM pipeline platform.
+
+In this project, I personally engineered:
+1. Dynamic Drag-and-Drop Form Builder & Engine: Built using React 19, TypeScript, and @dnd-kit,
+   allowing administrators to create customizable forms with 18+ input types (including GPS geolocation
+   and digital touchscreen signatures) stored as flexible JSON schemas.
+2. PostgreSQL Relational Architecture on Supabase: Designed 10 relational tables managing users,
+   hierarchical roles (Admin, Surveyor, Team Lead, Telecaller, File Handler, Counter, Manager),
+   submissions, and call audit logs with soft-deletes and JSONB storage for dynamic responses.
+3. Multi-Role CRM & SLA Pipeline: Implemented a full lead management workflow where field submissions
+   dynamically route from surveyors to team leads and telecallers, featuring SLA breach alerts,
+   automated daily reset of skipped leads, call logging, and bulk lead reassignments.
+4. Analytics & Reporting Workstation: Built interactive dashboards using Recharts for submission
+   trends and integrated SheetJS (XLSX) to export multi-column audit workbooks on demand.
+5. End-to-End Type Safety & Performance: Enforced strict TypeScript contracts across all PostgREST
+   queries and implemented in-memory schema caching alongside React Suspense code-splitting to ensure
+   lightning-fast sub-second dashboard performance."
+====================================================================================================

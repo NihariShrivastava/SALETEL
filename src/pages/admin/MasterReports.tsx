@@ -31,6 +31,7 @@ interface TelecallerData {
   wrongNumber: number;
   reverted: number;
   closed: number;
+  clearedFiles?: number;
   callsToNew?: number;
   callsToCold?: number;
   callsToWarm?: number;
@@ -70,8 +71,10 @@ interface FileHandlerData {
   id: string;
   name: string;
   assignedLeads: number;
+  pendingLeads?: number;
   totalSubmitted: number;
   totalClosed: number;
+  totalDeleted?: number;
   linkedFilesCount?: number;
   team_lead_ids?: string[];
 }
@@ -111,6 +114,7 @@ export default function MasterReports() {
   const [reportFilterTemplate, setReportFilterTemplate] = useState<string>('all');
   const [rawSubmissions, setRawSubmissions] = useState<any[] | null>(null);
   const [rawCallLogs, setRawCallLogs] = useState<any[]>([]);
+  const [rawFileSubmissions, setRawFileSubmissions] = useState<any[]>([]);
   const [rawTeamLeads, setRawTeamLeads] = useState<any[]>([]);
   const [rawTelecallers, setRawTelecallers] = useState<any[]>([]);
   const [tcNameMapState, setTcNameMapState] = useState<Map<string, string>>(new Map());
@@ -151,6 +155,13 @@ export default function MasterReports() {
   useEffect(() => {
     if (!rawSubmissions) return;
 
+    const clearedLeadMap = new Map<string, number>();
+    rawFileSubmissions.forEach((fs: any) => {
+      if ((fs.status === 'cleared' || fs.status === 'closed') && fs.original_lead_id) {
+        clearedLeadMap.set(fs.original_lead_id, (clearedLeadMap.get(fs.original_lead_id) || 0) + 1);
+      }
+    });
+
     const telecallerMap: Record<string, TelecallerData> = {};
     const teamLeadMap: Record<string, TeamLeadData> = {};
 
@@ -174,7 +185,7 @@ export default function MasterReports() {
       telecallerMap[tc.id] = {
         id: tc.id,
         name: tc.full_name || tcNameMapState.get(tc.id) || 'Unknown Telecaller',
-        assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+        assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0, clearedFiles: 0
       };
     });
 
@@ -209,7 +220,7 @@ export default function MasterReports() {
           telecallerMap[sub.telecaller_id] = {
             id: sub.telecaller_id,
             name: tcNameMapState.get(sub.telecaller_id) || 'Unknown Telecaller',
-            assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+            assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0, clearedFiles: 0
           };
         }
         const tMap = telecallerMap[sub.telecaller_id];
@@ -223,6 +234,11 @@ export default function MasterReports() {
         else if (bucket === 'wrong_number') tMap.wrongNumber += 1;
         else if (bucket === 'reverted') tMap.reverted += 1;
         else if (bucket === 'closed') tMap.closed += 1;
+
+        const clearedCount = clearedLeadMap.get(sub.id) || 0;
+        if (clearedCount > 0) {
+          tMap.clearedFiles = (tMap.clearedFiles || 0) + clearedCount;
+        }
       }
 
       const surveyorTl = sub.surveyor_id ? surveyorToTlMapState.get(sub.surveyor_id) : null;
@@ -325,7 +341,7 @@ export default function MasterReports() {
     setDataTelecallers(finalTCs.sort((a,b) => b.assigned - a.assigned));
     setDataTeamLeads(finalTLs.sort((a,b) => b.totalEntries - a.totalEntries));
 
-  }, [rawSubmissions, rawCallLogs, rawTeamLeads, rawTelecallers, reportFilterDomain, reportFilterTemplate, tcNameMapState, surveyorToTlMapState]);
+  }, [rawSubmissions, rawCallLogs, rawFileSubmissions, rawTeamLeads, rawTelecallers, reportFilterDomain, reportFilterTemplate, tcNameMapState, surveyorToTlMapState]);
 
   useEffect(() => {
     setMasterDumpPage(1);
@@ -469,11 +485,11 @@ export default function MasterReports() {
         tcNameMap.set(s.id, s.full_name || s.username);
       });
 
-      allTelecallers.forEach((tc: any) => {
+        allTelecallers.forEach((tc: any) => {
         telecallerMap[tc.id] = {
           id: tc.id,
           name: tc.full_name || tc.username,
-          assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+          assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0, clearedFiles: 0
         };
       });
 
@@ -524,24 +540,62 @@ export default function MasterReports() {
       setRawTelecallers(allTelecallers);
       setRawSubmissions(submissions);
       setRawCallLogs(callLogs);
+      setRawFileSubmissions(fileSubmissions);
+
+      const clearedLeadMap = new Map<string, number>();
+      fileSubmissions.forEach((fs: any) => {
+        if ((fs.status === 'cleared' || fs.status === 'closed') && fs.original_lead_id) {
+          clearedLeadMap.set(fs.original_lead_id, (clearedLeadMap.get(fs.original_lead_id) || 0) + 1);
+        }
+      });
 
       const fhMap: Record<string, FileHandlerData> = {};
       fhData.forEach((fh: any) => {
-        fhMap[fh.id] = { id: fh.id, name: fh.full_name || fh.username, assignedLeads: 0, totalSubmitted: 0, totalClosed: 0, linkedFilesCount: 0, team_lead_ids: fh.team_lead_ids || [] };
-      });
+        // 1. Determine all surveyor IDs under this FH's assigned team leads
+        const myTlIds = fh.team_lead_ids || [];
+        let surveyorIds: string[] = [];
+        allTeamLeads.filter((tl: any) => myTlIds.includes(tl.id) || (Array.isArray(tl.assigned_users) && tl.assigned_users.includes(fh.id))).forEach((tl: any) => {
+          surveyorIds.push(tl.id);
+          if (Array.isArray(tl.assigned_users)) {
+            surveyorIds = [...surveyorIds, ...tl.assigned_users];
+          }
+        });
+        allTeamLeads.forEach((tl: any) => {
+          if (Array.isArray(tl.assigned_users) && tl.assigned_users.includes(fh.id)) {
+            surveyorIds.push(tl.id);
+            if (Array.isArray(tl.assigned_users)) {
+              surveyorIds = [...surveyorIds, ...tl.assigned_users];
+            }
+          }
+        });
+        surveyorIds = Array.from(new Set(surveyorIds));
 
-      fileSubmissions.forEach((fs: any) => {
-        if (fhMap[fs.file_handler_id]) {
-          if (fs.status === 'submitted') {
-            fhMap[fs.file_handler_id].totalSubmitted += 1;
-          }
-          if (fs.status === 'closed' || fs.status === 'cleared') {
-             fhMap[fs.file_handler_id].totalClosed += 1;
-          }
-          if (fs.original_lead_id) {
-             fhMap[fs.file_handler_id].linkedFilesCount = (fhMap[fs.file_handler_id].linkedFilesCount || 0) + 1;
-          }
-        }
+        // 2. Closed leads available to this handler
+        const closedLeads = submissions.filter((s: any) => s.lead_status === 'closed' && surveyorIds.includes(s.surveyor_id));
+
+        // 3. File submissions by this handler
+        const myFiles = fileSubmissions.filter((fs: any) => fs.file_handler_id === fh.id);
+        const totalSubmitted = myFiles.filter((fs: any) => fs.status === 'submitted').length; // Open File
+        const totalClosed = myFiles.filter((fs: any) => fs.status === 'closed' || fs.status === 'cleared').length; // Cleared Files
+        const totalDeleted = myFiles.filter((fs: any) => fs.status === 'deleted').length; // Deleted by FH
+
+        // 4. Pending leads: closed leads that don't have an active (non-deleted) file submission yet
+        const activeLeadIds = new Set(myFiles.filter((fs: any) => fs.status !== 'deleted' && fs.original_lead_id).map((fs: any) => fs.original_lead_id));
+        const pendingLeads = closedLeads.filter((l: any) => !activeLeadIds.has(l.id)).length;
+
+        // 5. Total Assigned leads = pending leads + all files handled
+        const assignedLeads = pendingLeads + totalSubmitted + totalClosed + totalDeleted;
+
+        fhMap[fh.id] = {
+          id: fh.id,
+          name: fh.full_name || fh.username,
+          assignedLeads,
+          pendingLeads,
+          totalSubmitted,
+          totalClosed,
+          totalDeleted,
+          team_lead_ids: fh.team_lead_ids || []
+        };
       });
 
       setDataFileHandlers(Object.values(fhMap).sort((a,b) => b.totalSubmitted - a.totalSubmitted));
@@ -612,7 +666,7 @@ export default function MasterReports() {
             telecallerMap[sub.telecaller_id] = {
               id: sub.telecaller_id,
               name: tcNameMap.get(sub.telecaller_id) || 'Unknown Telecaller',
-              assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0
+              assigned: 0, newLeads: 0, immediate: 0, hot: 0, warm: 0, cold: 0, skipped: 0, wrongNumber: 0, reverted: 0, closed: 0, clearedFiles: 0
             };
           }
           const tMap = telecallerMap[sub.telecaller_id];
@@ -627,6 +681,11 @@ export default function MasterReports() {
           else if (bucket === 'wrong_number') tMap.wrongNumber += 1;
           else if (bucket === 'reverted') tMap.reverted += 1;
           else if (bucket === 'closed') tMap.closed += 1;
+
+          const clearedCount = clearedLeadMap.get(sub.id) || 0;
+          if (clearedCount > 0) {
+            tMap.clearedFiles = (tMap.clearedFiles || 0) + clearedCount;
+          }
         }
         
         const surveyorTl = sub.surveyor_id ? surveyorToTlMap.get(sub.surveyor_id) : null;
@@ -651,14 +710,7 @@ export default function MasterReports() {
 
           if (bucket === 'new') tlMap.newLeads += 1;
           else if (bucket === 'immediate') tlMap.immediate += 1;
-          else if (bucket === 'closed') {
-            tlMap.closed += 1;
-            Object.values(fhMap).forEach(fh => {
-              if (fh.team_lead_ids && fh.team_lead_ids.includes(surveyorTl.id)) {
-                fh.assignedLeads += 1;
-              }
-            });
-          }
+          else if (bucket === 'closed') tlMap.closed += 1;
           else if (bucket === 'deleted') tlMap.deleted += 1;
           else if (bucket === 'wrong_number') tlMap.wrongNumber += 1;
           else if (bucket === 'reverted') tlMap.reverted += 1;
@@ -868,18 +920,19 @@ export default function MasterReports() {
         'Immediate': d.immediate,
         'Skipped': d.skipped,
         'Wrong Number': d.wrongNumber,
-        'Reverted': d.reverted
+        'Reverted': d.reverted,
+        'Cleared': d.clearedFiles || 0
       }));
       sheetName = 'Outcome By Telecaller';
     } else if (activeTab === 'filehandler') {
       dataToExport = dataFileHandlers.map(d => {
-        const pendingCount = Math.max(0, d.assignedLeads - (d.linkedFilesCount || 0));
         return {
           'File Handler': d.name,
           'Leads Assigned': d.assignedLeads,
-          'Leads Pending': pendingCount,
+          'Leads Pending': d.pendingLeads ?? 0,
           'Open File': d.totalSubmitted,
-          'Cleared Files': d.totalClosed
+          'Cleared Files': d.totalClosed,
+          'Deleted by FH': d.totalDeleted ?? 0
         };
       });
       sheetName = 'File Handler Performance';
@@ -1720,6 +1773,7 @@ export default function MasterReports() {
                   <th className="py-3 px-4 font-semibold text-center text-text-muted">Skipped</th>
                   <th className="py-3 px-4 font-semibold text-center text-orange-400">Wrong No.</th>
                   <th className="py-3 px-4 font-semibold text-center text-purple-400">Reverted</th>
+                  <th className="py-3 px-4 font-semibold text-center text-pink-500">Cleared</th>
                 </tr>
               </thead>
               <tbody>
@@ -1736,9 +1790,10 @@ export default function MasterReports() {
                     <td className="py-3 px-4 text-center text-text-muted">{d.skipped}</td>
                     <td className="py-3 px-4 text-center text-orange-400">{d.wrongNumber}</td>
                     <td className="py-3 px-4 text-center text-purple-400 font-medium">{d.reverted}</td>
+                    <td className="py-3 px-4 text-center text-pink-500 font-bold">{d.clearedFiles || 0}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={10} className="py-8 text-center text-text-muted">No outcome data available.</td></tr>
+                  <tr><td colSpan={12} className="py-8 text-center text-text-muted">No outcome data available.</td></tr>
                 )}
               </tbody>
             </table>
@@ -1768,21 +1823,22 @@ export default function MasterReports() {
                   <th className="py-3 px-4 font-semibold text-center text-orange-400">Leads Pending</th>
                   <th className="py-3 px-4 font-semibold text-center text-white">Open File</th>
                   <th className="py-3 px-4 font-semibold text-center text-pink-500">Cleared Files</th>
+                  <th className="py-3 px-4 font-semibold text-center text-red-500">Deleted by FH</th>
                 </tr>
               </thead>
               <tbody>
                 {dataFileHandlers.length > 0 ? dataFileHandlers.map((d, i) => {
-                  const pendingCount = Math.max(0, d.assignedLeads - (d.linkedFilesCount || 0));
                   return (
                   <tr key={i} className="border-b border-bg-border last:border-0 hover:bg-bg-hover/50 transition-colors">
                     <td className="py-3 px-4 text-white font-medium">{d.name}</td>
                     <td className="py-3 px-4 text-center text-accent-blue font-bold">{d.assignedLeads}</td>
-                    <td className="py-3 px-4 text-center text-orange-400 font-bold">{pendingCount}</td>
+                    <td className="py-3 px-4 text-center text-orange-400 font-bold">{d.pendingLeads ?? 0}</td>
                     <td className="py-3 px-4 text-center text-white font-bold">{d.totalSubmitted.toLocaleString()}</td>
                     <td className="py-3 px-4 text-center text-pink-500 font-bold">{d.totalClosed.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-center text-red-500 font-bold">{(d.totalDeleted ?? 0).toLocaleString()}</td>
                   </tr>
                 )}) : (
-                  <tr><td colSpan={5} className="py-8 text-center text-text-muted">No file handler data available.</td></tr>
+                  <tr><td colSpan={6} className="py-8 text-center text-text-muted">No file handler data available.</td></tr>
                 )}
               </tbody>
             </table>
