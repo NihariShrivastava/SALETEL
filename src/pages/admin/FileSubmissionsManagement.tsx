@@ -23,11 +23,13 @@ import {
   Calendar,
   ExternalLink,
   HelpCircle,
-  FolderOpen
+  FolderOpen,
+  Filter
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 import type { FieldConfig } from '../../types';
+import ViewFileSubmissionModal from '../../components/common/ViewFileSubmissionModal';
 
 export default function FileSubmissionsManagement() {
   const navigate = useNavigate();
@@ -37,6 +39,8 @@ export default function FileSubmissionsManagement() {
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [fileHandlers, setFileHandlers] = useState<any[]>([]);
+  const [surveyors, setSurveyors] = useState<any[]>([]);
+  const [telecallers, setTelecallers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Filters & Tabs
@@ -44,12 +48,18 @@ export default function FileSubmissionsManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string>(initialTemplateId);
   const [selectedFH, setSelectedFH] = useState<string>('all');
+  const [selectedSurveyor, setSelectedSurveyor] = useState<string>('all');
+  const [selectedTelecaller, setSelectedTelecaller] = useState<string>('all');
   const [page, setPage] = useState(1);
   const itemsPerPage = 20;
+
+  // View File Modal State
+  const [viewingFile, setViewingFile] = useState<any | null>(null);
 
   // Edit Modal State
   const [editingFile, setEditingFile] = useState<any | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<{ id: string; name: string; description?: string; fields: FieldConfig[] } | null>(null);
+  const [editFileHandlerId, setEditFileHandlerId] = useState<string>('');
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [customFields, setCustomFields] = useState<{ id: string; question: string; answer: string }[]>([]);
   const [editStatus, setEditStatus] = useState<string>('submitted');
@@ -61,7 +71,7 @@ export default function FileSubmissionsManagement() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchTerm, selectedTemplate, selectedFH]);
+  }, [activeTab, searchTerm, selectedTemplate, selectedFH, selectedSurveyor, selectedTelecaller]);
 
   const fetchInitialData = async () => {
     setIsLoading(true);
@@ -74,15 +84,31 @@ export default function FileSubmissionsManagement() {
         .order('name');
       setTemplates(tmpls || []);
 
-      // 2. Fetch File Handlers
+      // 2. Fetch Staff: File Handlers, Surveyors, Telecallers
       const { data: staff } = await supabase
         .from('surveyors')
         .select('id, full_name, username, user_roles(name)');
-      const fhs = (staff || []).filter((s: any) => {
+
+      const fhs: any[] = [];
+      const svs: any[] = [];
+      const tcs: any[] = [];
+
+      (staff || []).forEach((s: any) => {
         const role = (Array.isArray(s.user_roles) ? s.user_roles[0]?.name : s.user_roles?.name)?.toLowerCase() || '';
-        return role.includes('file handler');
+        if (role.includes('file handler') || role.includes('filehandler') || role.includes('file_handler')) {
+          fhs.push(s);
+        }
+        if (role.includes('surveyor')) {
+          svs.push(s);
+        }
+        if (role.includes('telecaller')) {
+          tcs.push(s);
+        }
       });
+
       setFileHandlers(fhs);
+      setSurveyors(svs);
+      setTelecallers(tcs);
 
       // 3. Fetch File Submissions
       await fetchSubmissions();
@@ -114,6 +140,8 @@ export default function FileSubmissionsManagement() {
             data,
             submitted_at,
             lead_status,
+            surveyor_id,
+            telecaller_id,
             surveyor:surveyors!surveyor_id(id, full_name, username),
             telecaller:surveyors!telecaller_id(id, full_name, username),
             form_templates(name, fields)
@@ -147,19 +175,68 @@ export default function FileSubmissionsManagement() {
     return null;
   };
 
-  // Filtered lists
-  const filteredSubmissions = useMemo(() => {
-    return submissions.filter(item => {
-      // Tab filter
-      if (activeTab === 'open' && item.status !== 'submitted') return false;
-      if (activeTab === 'cleared' && item.status !== 'cleared' && item.status !== 'closed') return false;
-      if (activeTab === 'deleted' && item.status !== 'deleted') return false;
+  // Unique File Handlers from staff + submissions
+  const availableFileHandlers = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    fileHandlers.forEach(fh => map.set(fh.id, { id: fh.id, name: fh.full_name || fh.username }));
+    submissions.forEach(item => {
+      const fh = item.file_handler;
+      const fhId = item.file_handler_id || fh?.id;
+      if (fhId && !map.has(fhId)) {
+        map.set(fhId, { id: fhId, name: fh?.full_name || fh?.username || 'Unknown Handler' });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [fileHandlers, submissions]);
 
+  // Unique Surveyors from staff + submissions
+  const availableSurveyors = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    surveyors.forEach(s => map.set(s.id, { id: s.id, name: s.full_name || s.username }));
+    submissions.forEach(item => {
+      const s = item.original_lead?.surveyor;
+      const sId = item.original_lead?.surveyor_id || s?.id;
+      if (sId && !map.has(sId)) {
+        map.set(sId, { id: sId, name: s?.full_name || s?.username || 'Unknown Surveyor' });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [surveyors, submissions]);
+
+  // Unique Telecallers from staff + submissions
+  const availableTelecallers = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    telecallers.forEach(t => map.set(t.id, { id: t.id, name: t.full_name || t.username }));
+    submissions.forEach(item => {
+      const t = item.original_lead?.telecaller;
+      const tId = item.original_lead?.telecaller_id || t?.id;
+      if (tId && !map.has(tId)) {
+        map.set(tId, { id: tId, name: t?.full_name || t?.username || 'Unknown Telecaller' });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [telecallers, submissions]);
+
+  // Base filtered submissions (matching all dropdown filters and search term, across all statuses)
+  const baseFilteredSubmissions = useMemo(() => {
+    return submissions.filter(item => {
       // Template filter
       if (selectedTemplate !== 'all' && item.file_form_template_id !== selectedTemplate) return false;
 
       // FH filter
       if (selectedFH !== 'all' && item.file_handler_id !== selectedFH) return false;
+
+      // Surveyor filter
+      if (selectedSurveyor !== 'all') {
+        const surveyorId = item.original_lead?.surveyor?.id || item.original_lead?.surveyor_id;
+        if (surveyorId !== selectedSurveyor) return false;
+      }
+
+      // Telecaller filter
+      if (selectedTelecaller !== 'all') {
+        const telecallerId = item.original_lead?.telecaller?.id || item.original_lead?.telecaller_id;
+        if (telecallerId !== selectedTelecaller) return false;
+      }
 
       // Search term
       if (searchTerm.trim()) {
@@ -183,25 +260,35 @@ export default function FileSubmissionsManagement() {
 
       return true;
     });
-  }, [submissions, activeTab, selectedTemplate, selectedFH, searchTerm]);
+  }, [submissions, selectedTemplate, selectedFH, selectedSurveyor, selectedTelecaller, searchTerm]);
 
-  // Counts
+  // Counts corresponding to the chosen filters
   const counts = useMemo(() => {
     let open = 0;
     let cleared = 0;
     let deleted = 0;
-    submissions.forEach(s => {
+    baseFilteredSubmissions.forEach(s => {
       if (s.status === 'submitted') open++;
       else if (s.status === 'cleared' || s.status === 'closed') cleared++;
       else if (s.status === 'deleted') deleted++;
     });
     return {
-      all: submissions.length,
+      all: baseFilteredSubmissions.length,
       open,
       cleared,
       deleted
     };
-  }, [submissions]);
+  }, [baseFilteredSubmissions]);
+
+  // Filtered lists respecting the activeTab
+  const filteredSubmissions = useMemo(() => {
+    return baseFilteredSubmissions.filter(item => {
+      if (activeTab === 'open') return item.status === 'submitted';
+      if (activeTab === 'cleared') return item.status === 'cleared' || item.status === 'closed';
+      if (activeTab === 'deleted') return item.status === 'deleted';
+      return true; // 'all'
+    });
+  }, [baseFilteredSubmissions, activeTab]);
 
   // Pagination
   const totalPages = Math.ceil(filteredSubmissions.length / itemsPerPage) || 1;
@@ -214,6 +301,7 @@ export default function FileSubmissionsManagement() {
   const handleOpenEditModal = (file: any) => {
     setEditingFile(file);
     setEditStatus(file.status || 'submitted');
+    setEditFileHandlerId(file.file_handler_id || file.file_handler?.id || '');
 
     // Resolve template fields
     const rawTmpl = Array.isArray(file.file_form_template) ? file.file_form_template[0] : file.file_form_template;
@@ -283,6 +371,7 @@ export default function FileSubmissionsManagement() {
       const { error } = await supabase
         .from('file_submissions')
         .update({
+          file_handler_id: editFileHandlerId || null,
           data: payloadData,
           status: editStatus,
           updated_at: new Date().toISOString()
@@ -456,12 +545,12 @@ export default function FileSubmissionsManagement() {
           </div>
 
           {/* Search and Dropdown Filters */}
-          <div className="flex flex-wrap items-center gap-2.5 flex-1 justify-end">
-            <div className="relative flex-1 sm:max-w-xs min-w-[180px]">
+          <div className="flex flex-wrap items-center gap-2 flex-1 justify-end">
+            <div className="relative flex-1 sm:max-w-[200px] min-w-[150px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
               <input 
                 type="text" 
-                placeholder="Search lead, customer, handler..."
+                placeholder="Search lead, customer..."
                 className="w-full bg-bg-primary border border-bg-border rounded-lg pl-9 pr-3 py-1.5 text-white text-xs focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
@@ -469,28 +558,87 @@ export default function FileSubmissionsManagement() {
             </div>
 
             {/* Template Dropdown */}
-            <select
-              className="bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-accent-blue"
-              value={selectedTemplate}
-              onChange={e => setSelectedTemplate(e.target.value)}
-            >
-              <option value="all">All Templates</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5 bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1.5">
+              <FileText className="w-3.5 h-3.5 text-accent-blue shrink-0" />
+              <select
+                className="bg-transparent text-white text-xs focus:outline-none cursor-pointer max-w-[130px] truncate"
+                value={selectedTemplate}
+                onChange={e => setSelectedTemplate(e.target.value)}
+                title="Filter by File Template"
+              >
+                <option value="all" className="bg-bg-secondary text-white">All Templates</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.id} className="bg-bg-secondary text-white">{t.name}</option>
+                ))}
+              </select>
+            </div>
 
             {/* File Handler Dropdown */}
-            <select
-              className="bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-accent-blue"
-              value={selectedFH}
-              onChange={e => setSelectedFH(e.target.value)}
-            >
-              <option value="all">All File Handlers</option>
-              {fileHandlers.map(fh => (
-                <option key={fh.id} value={fh.id}>{fh.full_name || fh.username}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5 bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1.5">
+              <User className="w-3.5 h-3.5 text-accent-green shrink-0" />
+              <select
+                className="bg-transparent text-white text-xs focus:outline-none cursor-pointer max-w-[130px] truncate"
+                value={selectedFH}
+                onChange={e => setSelectedFH(e.target.value)}
+                title="Filter by File Handler"
+              >
+                <option value="all" className="bg-bg-secondary text-white">All File Handlers</option>
+                {availableFileHandlers.map(fh => (
+                  <option key={fh.id} value={fh.id} className="bg-bg-secondary text-white">{fh.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Surveyor Dropdown */}
+            <div className="flex items-center gap-1.5 bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1.5">
+              <User className="w-3.5 h-3.5 text-accent-yellow shrink-0" />
+              <select
+                className="bg-transparent text-white text-xs focus:outline-none cursor-pointer max-w-[130px] truncate"
+                value={selectedSurveyor}
+                onChange={e => setSelectedSurveyor(e.target.value)}
+                title="Filter by Surveyor"
+              >
+                <option value="all" className="bg-bg-secondary text-white">All Surveyors</option>
+                {availableSurveyors.map(s => (
+                  <option key={s.id} value={s.id} className="bg-bg-secondary text-white">{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Telecaller Dropdown */}
+            <div className="flex items-center gap-1.5 bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1.5">
+              <User className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+              <select
+                className="bg-transparent text-white text-xs focus:outline-none cursor-pointer max-w-[130px] truncate"
+                value={selectedTelecaller}
+                onChange={e => setSelectedTelecaller(e.target.value)}
+                title="Filter by Telecaller"
+              >
+                <option value="all" className="bg-bg-secondary text-white">All Telecallers</option>
+                {availableTelecallers.map(tc => (
+                  <option key={tc.id} value={tc.id} className="bg-bg-secondary text-white">{tc.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reset Filters Button */}
+            {(selectedTemplate !== 'all' || selectedFH !== 'all' || selectedSurveyor !== 'all' || selectedTelecaller !== 'all' || searchTerm.trim() !== '') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTemplate('all');
+                  setSelectedFH('all');
+                  setSelectedSurveyor('all');
+                  setSelectedTelecaller('all');
+                  setSearchTerm('');
+                }}
+                className="px-2.5 py-1.5 text-xs text-accent-red hover:bg-accent-red/10 rounded-lg border border-accent-red/20 transition-colors flex items-center gap-1 shrink-0 font-medium"
+                title="Reset all filters"
+              >
+                <X className="w-3.5 h-3.5" />
+                Reset
+              </button>
+            )}
           </div>
         </div>
 
@@ -584,8 +732,19 @@ export default function FileSubmissionsManagement() {
                       <div className="flex items-center justify-end gap-1.5">
                         <Button
                           size="sm"
+                          variant="outline"
+                          onClick={() => setViewingFile(item)}
+                          className="border-accent-blue/30 text-accent-blue hover:bg-accent-blue/10 text-xs py-1 px-2 flex items-center gap-1"
+                          title="View File Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          View
+                        </Button>
+
+                        <Button
+                          size="sm"
                           onClick={() => handleOpenEditModal(item)}
-                          className="bg-accent-blue/10 text-accent-blue hover:bg-accent-blue hover:text-white border border-accent-blue/30 text-xs py-1 px-2.5 flex items-center gap-1"
+                          className="bg-accent-blue/10 text-accent-blue hover:bg-accent-blue hover:text-white border border-accent-blue/30 text-xs py-1 px-2 flex items-center gap-1"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                           Edit Form
@@ -709,11 +868,25 @@ export default function FileSubmissionsManagement() {
                     <User className="w-3.5 h-3.5 text-accent-green" />
                     <span className="text-text-secondary">Handler:</span>
                     <strong className="text-white font-medium">
-                      {editingFile.file_handler?.full_name || editingFile.file_handler?.username || 'File Handler'}
+                      {availableFileHandlers.find(fh => fh.id === editFileHandlerId)?.name || editingFile.file_handler?.full_name || editingFile.file_handler?.username || 'Unassigned'}
                     </strong>
                   </span>
                   <span className="flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-accent-yellow" />
+                    <User className="w-3.5 h-3.5 text-accent-yellow" />
+                    <span className="text-text-secondary">Surveyor:</span>
+                    <strong className="text-white font-medium">
+                      {editingFile.original_lead?.surveyor?.full_name || editingFile.original_lead?.surveyor?.username || '-'}
+                    </strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-pink-400" />
+                    <span className="text-text-secondary">Telecaller:</span>
+                    <strong className="text-white font-medium">
+                      {editingFile.original_lead?.telecaller?.full_name || editingFile.original_lead?.telecaller?.username || '-'}
+                    </strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-text-muted" />
                     <span className="text-text-secondary">Updated:</span>
                     <strong className="text-white font-medium">
                       {new Date(editingFile.updated_at || editingFile.submitted_at).toLocaleString()}
@@ -739,22 +912,37 @@ export default function FileSubmissionsManagement() {
             <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
               {/* Left Column: Form Editor (Editable Form) */}
               <div className="w-full md:w-1/2 p-6 overflow-y-auto border-b md:border-b-0 md:border-r border-bg-border">
-                <div className="flex items-center justify-between pb-3 border-b border-bg-border mb-5">
+                <div className="flex items-center justify-between pb-3 border-b border-bg-border mb-5 flex-wrap gap-2">
                   <h4 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
                     <FileCheck className="w-4 h-4 text-accent-green" />
                     Edit File Form Entry
                   </h4>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-text-muted">Status:</label>
-                    <select
-                      value={editStatus}
-                      onChange={e => setEditStatus(e.target.value)}
-                      className="bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-accent-blue font-medium"
-                    >
-                      <option value="submitted">Open File</option>
-                      <option value="cleared">Cleared</option>
-                      <option value="deleted">Deleted</option>
-                    </select>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-xs text-text-muted">Handler:</label>
+                      <select
+                        value={editFileHandlerId}
+                        onChange={e => setEditFileHandlerId(e.target.value)}
+                        className="bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-accent-blue font-medium max-w-[150px] truncate"
+                      >
+                        <option value="">Unassigned</option>
+                        {availableFileHandlers.map(fh => (
+                          <option key={fh.id} value={fh.id}>{fh.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <label className="text-xs text-text-muted">Status:</label>
+                      <select
+                        value={editStatus}
+                        onChange={e => setEditStatus(e.target.value)}
+                        className="bg-bg-primary border border-bg-border rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-accent-blue font-medium"
+                      >
+                        <option value="submitted">Open File</option>
+                        <option value="cleared">Cleared</option>
+                        <option value="deleted">Deleted</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
@@ -965,6 +1153,14 @@ export default function FileSubmissionsManagement() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* View File Submission Modal */}
+      {viewingFile && (
+        <ViewFileSubmissionModal
+          file={viewingFile}
+          onClose={() => setViewingFile(null)}
+        />
       )}
     </div>
   );

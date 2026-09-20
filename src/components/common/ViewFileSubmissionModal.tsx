@@ -243,7 +243,17 @@ export default function ViewFileSubmissionModal({ file, onClose }: ViewFileSubmi
                 <strong className="text-white font-medium">{fileHandlerName}</strong>
               </span>
               <span className="flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-accent-yellow" />
+                <User className="w-3.5 h-3.5 text-accent-yellow" />
+                <span className="text-text-secondary">Surveyor:</span>
+                <strong className="text-white font-medium">{surveyorName}</strong>
+              </span>
+              <span className="flex items-center gap-1">
+                <User className="w-3.5 h-3.5 text-pink-400" />
+                <span className="text-text-secondary">Telecaller:</span>
+                <strong className="text-white font-medium">{telecallerName}</strong>
+              </span>
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-text-muted" />
                 <span className="text-text-secondary">Updated:</span>
                 <strong className="text-white font-medium">{new Date(file.updated_at || file.submitted_at).toLocaleString()}</strong>
               </span>
