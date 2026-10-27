@@ -1,5 +1,5 @@
 ====================================================================================================
-SALETEL (FIELDSYNC) - ENTERPRISE DATA COLLECTION ENGINE & MULTI-ROLE CRM
+SALETEL (FIELDSYNC) - ENTERPRISE DATA COLLECTION ENGINE & MULTI-ROLE CRM (customer relation management)
 COMPLETE TECHNICAL SPECIFICATION, SYSTEM ARCHITECTURE, AND TECH STACK DOCUMENTATION
 ====================================================================================================
 
