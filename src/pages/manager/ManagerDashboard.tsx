@@ -292,7 +292,7 @@ export default function ManagerDashboard() {
         const totalClosed = myFiles.filter(fs => fs.status === 'closed' || fs.status === 'cleared').length;
         const totalDeleted = myFiles.filter(fs => fs.status === 'deleted').length;
 
-        const activeLeadIds = new Set(myFiles.filter(fs => fs.status !== 'deleted' && fs.original_lead_id).map(fs => fs.original_lead_id));
+        const activeLeadIds = new Set(myFiles.filter(fs => fs.original_lead_id).map(fs => fs.original_lead_id));
         const pendingLeads = closedLeads.filter(l => !activeLeadIds.has(l.id)).length;
 
         const assignedLeads = pendingLeads + totalSubmitted + totalClosed + totalDeleted;

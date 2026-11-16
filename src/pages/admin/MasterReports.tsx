@@ -579,8 +579,8 @@ export default function MasterReports() {
         const totalClosed = myFiles.filter((fs: any) => fs.status === 'closed' || fs.status === 'cleared').length; // Cleared Files
         const totalDeleted = myFiles.filter((fs: any) => fs.status === 'deleted').length; // Deleted by FH
 
-        // 4. Pending leads: closed leads that don't have an active (non-deleted) file submission yet
-        const activeLeadIds = new Set(myFiles.filter((fs: any) => fs.status !== 'deleted' && fs.original_lead_id).map((fs: any) => fs.original_lead_id));
+        // 4. Pending leads: closed leads that don't have a file submission yet
+        const activeLeadIds = new Set(myFiles.filter((fs: any) => fs.original_lead_id).map((fs: any) => fs.original_lead_id));
         const pendingLeads = closedLeads.filter((l: any) => !activeLeadIds.has(l.id)).length;
 
         // 5. Total Assigned leads = pending leads + all files handled

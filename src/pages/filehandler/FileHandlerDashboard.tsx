@@ -128,8 +128,8 @@ export default function FileHandlerDashboard() {
 
       const rawSubmitted = (fsData || []) as any[];
       const submittedLeadIds = rawSubmitted
-        .filter(fs => fs.status !== 'deleted')
-        .map(fs => fs.original_lead_id);
+        .map(fs => fs.original_lead_id)
+        .filter(Boolean);
 
       // 3. Fetch Pending Leads (Closed by Team Leads assigned to this handler)
       let surveyorIds: string[] = [];
